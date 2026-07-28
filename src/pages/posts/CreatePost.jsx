@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Eye, Save, Calendar, Hash, Megaphone, Lightbulb, X } from 'lucide-react'
+import { ArrowLeft, Eye, Save, Calendar, Hash, Megaphone, Lightbulb } from 'lucide-react'
 import { usePosts } from '../../context/PostContext'
 import { useRestaurants } from '../../context/RestaurantContext'
 import UploadBox from '../../components/UploadBox'
@@ -32,6 +32,25 @@ function formatScheduleTime(timeStr) {
   const date = new Date()
   date.setHours(parseInt(hours, 10), parseInt(minutes, 10))
   return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
+function parseScheduleDateForInput(dateStr) {
+  if (!dateStr) return ''
+  const parsed = new Date(`${dateStr} 12:00:00`)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toISOString().split('T')[0]
+}
+
+function parseScheduleTimeForInput(timeStr) {
+  if (!timeStr) return ''
+  const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
+  if (!match) return ''
+  let hours = parseInt(match[1], 10)
+  const minutes = match[2]
+  const period = match[3]?.toUpperCase()
+  if (period === 'PM' && hours !== 12) hours += 12
+  if (period === 'AM' && hours === 12) hours = 0
+  return `${String(hours).padStart(2, '0')}:${minutes}`
 }
 
 export default function CreatePost() {
@@ -92,8 +111,8 @@ export default function CreatePost() {
           hashtags: post.hashtags?.join(' ') || '',
           cta: post.cta || '',
           restaurantId: post.restaurantId,
-          scheduledDate: post.scheduledDate || '',
-          scheduledTime: post.scheduledTime || '',
+          scheduledDate: parseScheduleDateForInput(post.scheduledDate),
+          scheduledTime: parseScheduleTimeForInput(post.scheduledTime),
         })
         setImage(post.image ? { preview: post.image } : null)
         if (post.status === 'Scheduled') setShowSchedule(true)
@@ -212,3 +231,261 @@ export default function CreatePost() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-4xl">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+              {isEdit ? 'Edit Post' : 'Create Post'}
+            </h2>
+            <p className="text-gray-500 dark:text-gray-400 mt-1">
+              Craft engaging content for your restaurant&apos;s social channels.
+            </p>
+          </div>
+        </div>
+        {draftSaved && (
+          <span className="text-xs font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-3 py-1.5 rounded-lg">
+            Draft autosaved
+          </span>
+        )}
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          <div className="glass rounded-2xl p-6 space-y-5">
+            <div>
+              <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Post Title
+              </label>
+              <input
+                id="title"
+                type="text"
+                value={form.title}
+                onChange={(e) => updateField('title', e.target.value)}
+                placeholder="e.g. Summer Menu Launch"
+                className={`w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500/50 transition-all ${
+                  errors.title ? 'border-red-400' : 'border-gray-200 dark:border-gray-700'
+                }`}
+              />
+              {errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label htmlFor="caption" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Caption
+                </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowTips(!showTips)}
+                    className="flex items-center gap-1 text-xs text-brand-600 dark:text-brand-400 hover:text-brand-700"
+                  >
+                    <Lightbulb className="h-3.5 w-3.5" />
+                    Tips
+                  </button>
+                  <span className={`text-xs font-medium ${getCharColor()}`}>
+                    {charCount.toLocaleString()} / {charLimit.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+              <textarea
+                id="caption"
+                value={form.caption}
+                onChange={(e) => updateField('caption', e.target.value)}
+                rows={5}
+                placeholder="Write a compelling caption for your audience..."
+                className={`w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500/50 resize-none transition-all ${
+                  errors.caption ? 'border-red-400' : 'border-gray-200 dark:border-gray-700'
+                }`}
+              />
+              {errors.caption && <p className="text-xs text-red-500 mt-1">{errors.caption}</p>}
+              <div className="mt-2 h-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-300 ${
+                    charPercentage >= 100 ? 'bg-red-500' : charPercentage >= 80 ? 'bg-yellow-500' : 'gradient-bg'
+                  }`}
+                  style={{ width: `${Math.min(charPercentage, 100)}%` }}
+                />
+              </div>
+              {showTips && (
+                <ul className="mt-3 p-4 rounded-xl bg-brand-50 dark:bg-brand-900/20 border border-brand-100 dark:border-brand-800/30 space-y-2">
+                  {currentTips.map((tip) => (
+                    <li key={tip} className="flex items-start gap-2 text-xs text-gray-600 dark:text-gray-400">
+                      <Lightbulb className="h-3.5 w-3.5 text-brand-500 flex-shrink-0 mt-0.5" />
+                      {tip}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Upload Image
+              </label>
+              <UploadBox value={image} onChange={setImage} />
+            </div>
+          </div>
+
+          <div className="glass rounded-2xl p-6 space-y-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Select Platform
+            </label>
+            <PlatformSelector
+              value={form.platform}
+              onChange={(p) => updateField('platform', p)}
+            />
+            {errors.platform && <p className="text-xs text-red-500">{errors.platform}</p>}
+          </div>
+
+          <div className="glass rounded-2xl p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <Hash className="h-4 w-4 text-brand-500" />
+              <label htmlFor="hashtags" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Hashtags
+              </label>
+            </div>
+            <input
+              id="hashtags"
+              type="text"
+              value={form.hashtags}
+              onChange={(e) => updateField('hashtags', e.target.value)}
+              placeholder="#Foodie #RestaurantLife #LocalEats"
+              className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500/50"
+            />
+            <div className="flex flex-wrap gap-2">
+              {suggestedHashtags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => addHashtag(tag)}
+                  className="px-3 py-1 rounded-lg text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 hover:text-brand-600 dark:hover:text-brand-400 transition-colors"
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="glass rounded-2xl p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <Megaphone className="h-4 w-4 text-brand-500" />
+              <label htmlFor="cta" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Call-To-Action
+              </label>
+            </div>
+            <input
+              id="cta"
+              type="text"
+              value={form.cta}
+              onChange={(e) => updateField('cta', e.target.value)}
+              placeholder="e.g. Reserve a Table, Order Now, Learn More"
+              className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500/50"
+            />
+          </div>
+
+          <div className="glass rounded-2xl p-6 space-y-4">
+            <label htmlFor="restaurant" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Restaurant
+            </label>
+            <select
+              id="restaurant"
+              value={form.restaurantId}
+              onChange={(e) => updateField('restaurantId', e.target.value)}
+              className={`w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500/50 ${
+                errors.restaurantId ? 'border-red-400' : 'border-gray-200 dark:border-gray-700'
+              }`}
+            >
+              <option value="">Select a restaurant</option>
+              {restaurants.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+            {errors.restaurantId && <p className="text-xs text-red-500">{errors.restaurantId}</p>}
+          </div>
+
+          <div className="glass rounded-2xl p-6 space-y-4">
+            <button
+              type="button"
+              onClick={() => setShowSchedule(!showSchedule)}
+              className="flex items-center justify-between w-full text-left"
+            >
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-brand-500" />
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Schedule Post</span>
+              </div>
+              <span className="text-xs text-gray-500">{showSchedule ? 'Hide' : 'Optional'}</span>
+            </button>
+            {showSchedule && (
+              <div className="grid sm:grid-cols-2 gap-4 pt-2">
+                <div>
+                  <label htmlFor="scheduledDate" className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                    Date
+                  </label>
+                  <input
+                    id="scheduledDate"
+                    type="date"
+                    value={form.scheduledDate}
+                    onChange={(e) => updateField('scheduledDate', e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500/50"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="scheduledTime" className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">
+                    Time
+                  </label>
+                  <input
+                    id="scheduledTime"
+                    type="time"
+                    value={form.scheduledTime}
+                    onChange={(e) => updateField('scheduledTime', e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500/50"
+                  />
+                </div>
+              </div>
+            )}
+            {errors.schedule && <p className="text-xs text-red-500">{errors.schedule}</p>}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="glass rounded-2xl p-6 sticky top-6 space-y-4">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Actions</h3>
+            <Button
+              variant="secondary"
+              className="w-full"
+              onClick={handleSaveDraft}
+              loading={saving}
+            >
+              <Save className="h-4 w-4" />
+              Save Draft
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={handlePreview}
+            >
+              <Eye className="h-4 w-4" />
+              Preview Post
+            </Button>
+            <Button
+              className="w-full"
+              onClick={handleSchedule}
+              loading={saving}
+            >
+              <Calendar className="h-4 w-4" />
+              Schedule Post
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

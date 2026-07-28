@@ -469,3 +469,44 @@ export const platformColors = {
   TikTok: 'from-gray-900 to-pink-600',
   YouTube: 'from-red-600 to-red-700',
 }
+
+export const platformHashtagSuggestions = {
+  Instagram: ['#Foodie', '#InstaFood', '#RestaurantLife', '#FoodPhotography', '#EatLocal', '#ChefSpecial'],
+  Facebook: ['#LocalBusiness', '#FoodLovers', '#DiningOut', '#WeekendVibes', '#FamilyDining'],
+  'Twitter(X)': ['#FoodTwitter', '#FoodNews', '#Dining', '#LocalEats', '#FoodTrends'],
+  TikTok: ['#FoodTok', '#RecipeTok', '#ViralFood', '#FoodChallenge', '#BehindTheScenes'],
+  YouTube: ['#FoodVlog', '#CookingTips', '#RestaurantReview', '#FoodCommunity', '#ChefLife'],
+}
+
+export const captionTips = {
+  Instagram: [
+    'Start with a hook in the first line — it appears before "more"',
+    'Use 3–5 relevant hashtags for best reach',
+    'Include a clear call-to-action (Reserve, Order, Visit)',
+    'Tag your location to boost local discovery',
+  ],
+  Facebook: [
+    'Keep captions conversational and community-focused',
+    'Ask a question to encourage comments',
+    'Share behind-the-scenes stories for authenticity',
+    'Include event dates and links when promoting specials',
+  ],
+  'Twitter(X)': [
+    'Stay under 280 characters for maximum impact',
+    'Use 1–2 hashtags — less is more on X',
+    'Add urgency with time-limited offers',
+    'Include a link or CTA when space allows',
+  ],
+  TikTok: [
+    'Write captions that complement your video hook',
+    'Use trending hashtags alongside branded ones',
+    'Keep it short, punchy, and action-oriented',
+    'Encourage duets, stitches, or challenges',
+  ],
+  YouTube: [
+    'Community posts support longer captions — tell a story',
+    'Tease upcoming content or live sessions',
+    'Use hashtags to connect with your niche audience',
+    'Include a clear CTA button when available',
+  ],
+}

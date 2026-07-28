@@ -63,6 +63,9 @@ export default function AppRoutes() {
         <Route path="/dashboard/posts/:id/edit" element={<CreatePost />} />
         <Route path="/dashboard/posts/:id" element={<PostDetails />} />
         <Route path="/dashboard/content-generator"element={<AIContentGenerator />}/>
+        <Route path="/dashboard/ai-assistant" element={<AIAssistant />}/>
+        <Route path="/dashboard/ai-history" element={<AIHistory />}/>
+        <Route path="/dashboard/ai-history-detail" element={<AIHistoryDetail />}/>
         <Route path="/dashboard/scheduler" element={<PlaceholderPage title="Scheduler" description="Plan and schedule your content calendar." />} />
         <Route path="/dashboard/campaigns" element={<PlaceholderPage title="Campaigns" description="Launch and manage marketing campaigns." />} />
         <Route path="/dashboard/analytics" element={<PlaceholderPage title="Analytics" description="Track engagement, reach, and growth metrics." />} />

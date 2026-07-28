@@ -20,6 +20,10 @@ import PostPreviewPage from '../pages/posts/PostPreviewPage'
 import DashboardLayout from '../layouts/DashboardLayout'
 import { userSidebarLinks } from '../data/dashboardData'
 import { adminSidebarLinks } from '../data/dummyData'
+import AIContentGenerator from '../pages/ai/AIContentGenerator'
+import AIAssistant from '../pages/ai/AIAssistant'
+import AIHistory from '../pages/ai/AIHistory'
+import AIHistoryDetail from '../pages/ai/AIHistoryDetail'
 
 function PlaceholderPage({ title, description }) {
   return (
@@ -58,7 +62,7 @@ export default function AppRoutes() {
         <Route path="/dashboard/posts/preview" element={<PostPreviewPage />} />
         <Route path="/dashboard/posts/:id/edit" element={<CreatePost />} />
         <Route path="/dashboard/posts/:id" element={<PostDetails />} />
-        <Route path="/dashboard/content-generator" element={<PlaceholderPage title="Content Generator" description="AI-powered caption and content generation." />} />
+        <Route path="/dashboard/content-generator"element={<AIContentGenerator />}/>
         <Route path="/dashboard/scheduler" element={<PlaceholderPage title="Scheduler" description="Plan and schedule your content calendar." />} />
         <Route path="/dashboard/campaigns" element={<PlaceholderPage title="Campaigns" description="Launch and manage marketing campaigns." />} />
         <Route path="/dashboard/analytics" element={<PlaceholderPage title="Analytics" description="Track engagement, reach, and growth metrics." />} />

@@ -5,21 +5,24 @@ import { ThemeProvider } from './context/ThemeContext'
 import { NotificationProvider } from './context/NotificationContext'
 import { RestaurantProvider } from './context/RestaurantContext'
 import { PostProvider } from './context/PostContext'
+import { AIProvider } from './context/AIContext'
 import App from './App'
 import './index.css'
 
 createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <BrowserRouter>
-      <ThemeProvider>
-        <NotificationProvider>
-          <RestaurantProvider>
-            <PostProvider>
+<StrictMode>
+  <BrowserRouter>
+    <ThemeProvider>
+      <NotificationProvider>
+        <RestaurantProvider>
+          <PostProvider>
+            <AIProvider>
               <App />
-            </PostProvider>
-          </RestaurantProvider>
-        </NotificationProvider>
-      </ThemeProvider>
-    </BrowserRouter>
-  </StrictMode>
+            </AIProvider>
+          </PostProvider>
+        </RestaurantProvider>
+      </NotificationProvider>
+    </ThemeProvider>
+  </BrowserRouter>
+</StrictMode>
 )

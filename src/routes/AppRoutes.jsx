@@ -1,0 +1,77 @@
+import { Routes, Route } from 'react-router-dom'
+import Landing from '../pages/Landing'
+import Login from '../pages/Login'
+import Register from '../pages/Register'
+import ForgotPassword from '../pages/ForgotPassword'
+import UserDashboard from '../pages/UserDashboard'
+import AdminDashboard from '../pages/AdminDashboard'
+import Profile from '../pages/Profile'
+import Settings from '../pages/Settings'
+import RestaurantList from '../pages/restaurants/RestaurantList'
+import AddRestaurant from '../pages/restaurants/AddRestaurant'
+import RestaurantDetails from '../pages/restaurants/RestaurantDetails'
+import AllPosts from '../pages/posts/AllPosts'
+import CreatePost from '../pages/posts/CreatePost'
+import DraftPosts from '../pages/posts/DraftPosts'
+import ScheduledPosts from '../pages/posts/ScheduledPosts'
+import PublishedPosts from '../pages/posts/PublishedPosts'
+import PostDetails from '../pages/posts/PostDetails'
+import PostPreviewPage from '../pages/posts/PostPreviewPage'
+import DashboardLayout from '../layouts/DashboardLayout'
+import { userSidebarLinks } from '../data/dashboardData'
+import { adminSidebarLinks } from '../data/dummyData'
+
+function PlaceholderPage({ title, description }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
+      <div className="h-16 w-16 rounded-2xl gradient-bg flex items-center justify-center mb-4">
+        <span className="text-2xl">🚧</span>
+      </div>
+      <h2 className="text-xl font-bold text-gray-900 dark:text-white">{title}</h2>
+      <p className="text-gray-500 dark:text-gray-400 mt-2 text-center max-w-md">
+        {description || 'This page is coming soon in a future phase.'}
+      </p>
+    </div>
+  )
+}
+
+export default function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<Landing />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+
+      <Route element={<DashboardLayout links={userSidebarLinks} />}>
+        <Route path="/dashboard" element={<UserDashboard />} />
+        <Route path="/dashboard/profile" element={<Profile />} />
+        <Route path="/dashboard/restaurants" element={<RestaurantList />} />
+        <Route path="/dashboard/restaurants/add" element={<AddRestaurant />} />
+        <Route path="/dashboard/restaurants/:id" element={<RestaurantDetails />} />
+        <Route path="/dashboard/restaurants/:id/edit" element={<PlaceholderPage title="Edit Restaurant" description="Restaurant editing will be available in the next update." />} />
+        <Route path="/dashboard/posts" element={<AllPosts />} />
+        <Route path="/dashboard/posts/create" element={<CreatePost />} />
+        <Route path="/dashboard/posts/drafts" element={<DraftPosts />} />
+        <Route path="/dashboard/posts/scheduled" element={<ScheduledPosts />} />
+        <Route path="/dashboard/posts/published" element={<PublishedPosts />} />
+        <Route path="/dashboard/posts/preview" element={<PostPreviewPage />} />
+        <Route path="/dashboard/posts/:id/edit" element={<CreatePost />} />
+        <Route path="/dashboard/posts/:id" element={<PostDetails />} />
+        <Route path="/dashboard/content-generator" element={<PlaceholderPage title="Content Generator" description="AI-powered caption and content generation." />} />
+        <Route path="/dashboard/scheduler" element={<PlaceholderPage title="Scheduler" description="Plan and schedule your content calendar." />} />
+        <Route path="/dashboard/campaigns" element={<PlaceholderPage title="Campaigns" description="Launch and manage marketing campaigns." />} />
+        <Route path="/dashboard/analytics" element={<PlaceholderPage title="Analytics" description="Track engagement, reach, and growth metrics." />} />
+        <Route path="/dashboard/settings" element={<Settings />} />
+      </Route>
+
+      <Route element={<DashboardLayout links={adminSidebarLinks} />}>
+        <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/admin/users" element={<PlaceholderPage title="Users Management" />} />
+        <Route path="/admin/restaurants" element={<PlaceholderPage title="Restaurants Management" />} />
+        <Route path="/admin/reports" element={<PlaceholderPage title="Reports" />} />
+        <Route path="/admin/settings" element={<PlaceholderPage title="Admin Settings" />} />
+      </Route>
+    </Routes>
+  )
+}

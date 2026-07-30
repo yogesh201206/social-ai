@@ -19,7 +19,7 @@ export default function AIAssistant() {
         </div>
         <div className="flex gap-2">
           <Link
-            to="/dashboard/ai-generator"
+            to="/dashboard/content-generator"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
           >
             <Sparkles className="h-4 w-4" />
@@ -48,7 +48,7 @@ export default function AIAssistant() {
             <SuggestionCard
               key={s.id}
               {...s}
-              onClick={() => navigate('/dashboard/ai-generator')}
+              onClick={() => navigate('/dashboard/content-generator')}
             />
           ))}
         </div>

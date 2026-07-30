@@ -12,6 +12,7 @@ function getPageTitle(pathname) {
   if (pathname.match(/\/dashboard\/restaurants\/[^/]+\/edit$/)) return 'Edit Restaurant'
   if (pathname.match(/\/dashboard\/posts\/[^/]+\/edit$/)) return 'Edit Post'
   if (pathname.match(/\/dashboard\/posts\/[^/]+$/) && !pathname.endsWith('/create') && !pathname.endsWith('/drafts') && !pathname.endsWith('/scheduled') && !pathname.endsWith('/published') && !pathname.endsWith('/preview')) return 'Post Details'
+  if (pathname.match(/^\/dashboard\/ai-history\/[^/]+$/)) return 'AI History Detail'
 
   return 'Dashboard'
 }

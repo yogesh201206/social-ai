@@ -151,7 +151,7 @@ export default function AIHistoryDetail() {
           <FilePlus className="h-4 w-4" />
           Create Post
         </Button>
-        <Link to="/dashboard/ai-generator">
+        <Link to="/dashboard/content-generator">
           <Button variant="outline">Generate New</Button>
         </Link>
       </div>

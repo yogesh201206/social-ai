@@ -26,7 +26,7 @@ export default function AIHistory() {
         <div className="flex items-center gap-4">
           <button
             type="button"
-            onClick={() => navigate('/dashboard/ai-generator')}
+            onClick={() => navigate('/dashboard/content-generator')}
             className="p-2 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
           >
             <ArrowLeft className="h-5 w-5" />
@@ -39,7 +39,7 @@ export default function AIHistory() {
           </div>
         </div>
         <Link
-          to="/dashboard/ai-generator"
+          to="/dashboard/content-generator"
           className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium gradient-bg text-white shadow-md shadow-brand-500/25"
         >
           <Sparkles className="h-4 w-4" />
@@ -65,7 +65,7 @@ export default function AIHistory() {
               : 'Generate content with AI and it will appear here.'
           }
           actionLabel={!search ? 'Open AI Generator' : undefined}
-          onAction={!search ? () => navigate('/dashboard/ai-generator') : undefined}
+          onAction={!search ? () => navigate('/dashboard/content-generator') : undefined}
         />
       ) : (
         <div className="grid sm:grid-cols-2 gap-4">

@@ -60,6 +60,8 @@ export const userSidebarLinks = [
   { label: 'Restaurants', icon: 'Building2', path: '/dashboard/restaurants' },
   { label: 'Posts', icon: 'FileText', path: '/dashboard/posts' },
   { label: 'Content Generator', icon: 'Sparkles', path: '/dashboard/content-generator' },
+  { label: 'AI Assistant', icon: 'Bot', path: '/dashboard/ai-assistant' },
+  { label: 'AI History', icon: 'History', path: '/dashboard/ai-history' },
   { label: 'Scheduler', icon: 'Calendar', path: '/dashboard/scheduler' },
   { label: 'Campaigns', icon: 'Megaphone', path: '/dashboard/campaigns' },
   { label: 'Analytics', icon: 'BarChart3', path: '/dashboard/analytics' },
@@ -77,6 +79,9 @@ export const routeTitles = {
   '/dashboard/posts/published': 'Published Posts',
   '/dashboard/posts/preview': 'Post Preview',
   '/dashboard/content-generator': 'Content Generator',
+  '/dashboard/ai-assistant': 'AI Assistant',
+  '/dashboard/ai-history': 'AI History',
+  '/dashboard/ai-history/:id': 'AI History Detail',
   '/dashboard/scheduler': 'Scheduler',
   '/dashboard/campaigns': 'Campaigns',
   '/dashboard/analytics': 'Analytics',
@@ -87,8 +92,8 @@ export const routeTitles = {
 export const quickActions = [
   { label: 'Create New Post', icon: 'Plus', color: 'gradient-bg text-white', path: '/dashboard/posts/create' },
   { label: 'Generate AI Caption', icon: 'Sparkles', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400', path: '/dashboard/content-generator' },
-  { label: 'Schedule Campaign', icon: 'Megaphone', color: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400', path: '/dashboard/campaigns' },
-  { label: 'View Analytics', icon: 'BarChart3', color: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400', path: '/dashboard/analytics' },
+  { label: 'Open AI Assistant', icon: 'Bot', color: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400', path: '/dashboard/ai-assistant' },
+  { label: 'View AI History', icon: 'History', color: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400', path: '/dashboard/ai-history' },
 ]
 
 export const upcomingPosts = [

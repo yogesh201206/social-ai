@@ -44,12 +44,12 @@ export const dashboardStats = [
 ]
 
 export const userProfile = {
-  name: 'John Doe',
-  email: 'john.doe@socialflow.ai',
-  phone: '+1 (555) 123-4567',
+  name: 'Yogesh',
+  email: 'yogesh@social.ai',
+  phone: '9597267653',
   businessName: 'Doe Restaurant Group',
   businessType: 'Multi-location Restaurant',
-  avatar: 'JD',
+  avatar: 'Y',
   avatarUrl: null,
   joinedDate: 'March 2025',
   plan: 'Professional',

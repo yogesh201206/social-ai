@@ -24,6 +24,9 @@ import AIContentGenerator from '../pages/ai/AIContentGenerator'
 import AIAssistant from '../pages/ai/AIAssistant'
 import AIHistory from '../pages/ai/AIHistory'
 import AIHistoryDetail from '../pages/ai/AIHistoryDetail'
+import Scheduler from '../pages/scheduler/Scheduler'
+import CreateSchedule from '../pages/scheduler/CreateSchedule'
+import ScheduledPostDetails from '../pages/scheduler/ScheduledPostDetails'
 
 function PlaceholderPage({ title, description }) {
   return (
@@ -67,7 +70,9 @@ export default function AppRoutes() {
         <Route path="/dashboard/ai-history" element={<AIHistory />} />
         <Route path="/dashboard/ai-history/:id" element={<AIHistoryDetail />} />
         <Route path="/dashboard/ai-history-detail" element={<AIHistoryDetail />} />
-        <Route path="/dashboard/scheduler" element={<PlaceholderPage title="Scheduler" description="Plan and schedule your content calendar." />} />
+        <Route path="/dashboard/scheduler" element={<Scheduler />} />
+        <Route path="/dashboard/scheduler/create" element={<CreateSchedule />} />
+        <Route path="/dashboard/scheduler/:id" element={<ScheduledPostDetails />} />
         <Route path="/dashboard/campaigns" element={<PlaceholderPage title="Campaigns" description="Launch and manage marketing campaigns." />} />
         <Route path="/dashboard/analytics" element={<PlaceholderPage title="Analytics" description="Track engagement, reach, and growth metrics." />} />
         <Route path="/dashboard/settings" element={<Settings />} />

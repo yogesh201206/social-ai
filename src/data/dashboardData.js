@@ -83,6 +83,8 @@ export const routeTitles = {
   '/dashboard/ai-history': 'AI History',
   '/dashboard/ai-history/:id': 'AI History Detail',
   '/dashboard/scheduler': 'Scheduler',
+  '/dashboard/scheduler/create': 'Schedule Post',
+  '/dashboard/scheduler/:id': 'Scheduled Post',
   '/dashboard/campaigns': 'Campaigns',
   '/dashboard/analytics': 'Analytics',
   '/dashboard/settings': 'Settings',
@@ -91,6 +93,7 @@ export const routeTitles = {
 
 export const quickActions = [
   { label: 'Create New Post', icon: 'Plus', color: 'gradient-bg text-white', path: '/dashboard/posts/create' },
+  { label: 'Schedule Post', icon: 'Calendar', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400', path: '/dashboard/scheduler/create' },
   { label: 'Generate AI Caption', icon: 'Sparkles', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400', path: '/dashboard/content-generator' },
   { label: 'Open AI Assistant', icon: 'Bot', color: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400', path: '/dashboard/ai-assistant' },
   { label: 'View AI History', icon: 'History', color: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400', path: '/dashboard/ai-history' },

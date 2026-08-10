@@ -6,6 +6,7 @@ import { NotificationProvider } from './context/NotificationContext'
 import { RestaurantProvider } from './context/RestaurantContext'
 import { PostProvider } from './context/PostContext'
 import { AIProvider } from './context/AIContext'
+import { SchedulerProvider } from './context/SchedulerContext'
 import App from './App'
 import './index.css'
 
@@ -17,7 +18,9 @@ createRoot(document.getElementById('root')).render(
         <RestaurantProvider>
           <PostProvider>
             <AIProvider>
-              <App />
+              <SchedulerProvider>
+                <App />
+              </SchedulerProvider>
             </AIProvider>
           </PostProvider>
         </RestaurantProvider>

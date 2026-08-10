@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import * as Icons from 'lucide-react'
-import { useScheduler } from '../context/SchedulerContext'
-import { platformIcons, platformColors } from '../data/postsData'
-import { statusStyles } from '../data/schedulerData'
+import { useScheduler } from '../../context/SchedulerContext'
+import { platformIcons, platformColors } from '../../data/postsData'
+import { statusStyles } from '../../data/schedulerData'
 import StatusBadge from '../../components/StatusBadge'
 
 const MONTH_NAMES = [
@@ -229,20 +229,21 @@ function DayView({ currentDate, postsByDate, onSelectPost }) {
   )
 }
 
-export default function ScheduleCalendar({ onSelectPost, initialView = 'month' }) {
+export default function ScheduleCalendar({ onSelectPost, initialView = 'month', posts }) {
   const { scheduledPosts } = useScheduler()
+  const displayPosts = posts || scheduledPosts
   const [view, setView] = useState(initialView)
   const [currentDate, setCurrentDate] = useState(new Date(2026, 7, 10))
 
   const postsByDate = useMemo(() => {
     const map = {}
-    scheduledPosts.forEach((post) => {
+    displayPosts.forEach((post) => {
       if (!post.scheduledDate) return
       if (!map[post.scheduledDate]) map[post.scheduledDate] = []
       map[post.scheduledDate].push(post)
     })
     return map
-  }, [scheduledPosts])
+  }, [displayPosts])
 
   const navigate = (direction) => {
     const next = new Date(currentDate)

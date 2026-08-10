@@ -16,15 +16,22 @@ export function NotificationProvider({ children }) {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
   }, [])
 
-  const clearAll = useCallback(() => {
-    setNotifications([])
+  const addNotification = useCallback((notification) => {
+    const newNote = {
+      id: `notif-${Date.now()}`,
+      time: 'Just now',
+      read: false,
+      type: 'schedule',
+      ...notification,
+    }
+    setNotifications((prev) => [newNote, ...prev])
   }, [])
 
   const unreadCount = notifications.filter((n) => !n.read).length
 
   return (
     <NotificationContext.Provider
-      value={{ notifications, unreadCount, markAsRead, markAllAsRead, clearAll }}
+      value={{ notifications, unreadCount, markAsRead, markAllAsRead, clearAll, addNotification }}
     >
       {children}
     </NotificationContext.Provider>

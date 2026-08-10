@@ -11,6 +11,8 @@ import UploadBox from '../../components/UploadBox'
 import PostPreview from '../../components/PostPreview'
 import { useScheduler } from '../../context/SchedulerContext'
 import { useRestaurants } from '../../context/RestaurantContext'
+import { usePosts } from '../../context/PostContext'
+import { useNotifications } from '../../context/NotificationContext'
 import { schedulerTimezones } from '../../data/schedulerData'
 import { restaurants as restaurantData } from '../../data/restaurantData'
 
@@ -91,14 +93,39 @@ export default function CreateSchedule() {
 
   const { addScheduledPost, updateScheduledPost, getScheduledPost } = useScheduler()
   const { restaurants } = useRestaurants()
+  const { posts: libraryPosts } = usePosts()
+  const { addNotification } = useNotifications()
 
   const [form, setForm] = useState(defaultForm)
+  const [selectedPostId, setSelectedPostId] = useState('')
   const [image, setImage] = useState(null)
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
   const [successData, setSuccessData] = useState(null)
   const [previewPlatform, setPreviewPlatform] = useState('Instagram')
+
+  const handleSelectExistingPost = (postId) => {
+    setSelectedPostId(postId)
+    if (!postId) return
+    const selected = libraryPosts.find((p) => String(p.id) === String(postId))
+    if (selected) {
+      setForm((prev) => ({
+        ...prev,
+        title: selected.title || prev.title,
+        caption: selected.caption || prev.caption,
+        hashtags: Array.isArray(selected.hashtags) ? selected.hashtags.join(' ') : (selected.hashtags || prev.hashtags),
+        restaurantId: selected.restaurantId || prev.restaurantId,
+        platforms: selected.platform ? [selected.platform] : (prev.platforms.length > 0 ? prev.platforms : ['Instagram']),
+      }))
+      if (selected.image) {
+        setImage({ preview: selected.image })
+      }
+      if (selected.platform) {
+        setPreviewPlatform(selected.platform)
+      }
+    }
+  }
 
   const allRestaurants = restaurants.length > 0 ? restaurants : restaurantData
 
@@ -206,6 +233,11 @@ export default function CreateSchedule() {
       } else {
         saved = addScheduledPost(data)
       }
+      addNotification?.({
+        title: 'Post Scheduled',
+        message: `"${data.title}" scheduled for ${data.restaurantName} (${data.branchName}) on ${data.scheduledDateDisplay || data.scheduledDate} at ${data.scheduledTime}.`,
+        type: 'schedule',
+      })
       setSaving(false)
       setSuccessData(saved)
       setShowSuccess(true)
@@ -303,6 +335,27 @@ export default function CreateSchedule() {
 
         <FormSection number="4" title="Post Content" icon={Sparkles}>
           <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-brand-50/50 dark:bg-brand-900/10 border border-brand-100 dark:border-brand-800/40">
+              <label className="block text-sm font-semibold text-gray-900 dark:text-white mb-1.5">
+                Import Content from Existing Post / Draft (optional)
+              </label>
+              <select
+                value={selectedPostId}
+                onChange={(e) => handleSelectExistingPost(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="">-- Create new content manually --</option>
+                {libraryPosts.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title} ({p.status} · {p.platform || 'Multi-platform'})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Selecting an existing post will automatically load its caption, hashtags, media, and platform.
+              </p>
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Post Title (optional)</label>
               <input

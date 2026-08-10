@@ -106,7 +106,7 @@ export default function Scheduler() {
       </div>
 
       {activeTab === 'calendar' ? (
-        <ScheduleCalendar onSelectPost={(post) => navigate(`/dashboard/scheduler/${post.id}`)} />
+        <ScheduleCalendar posts={filteredPosts} onSelectPost={(post) => navigate(`/dashboard/scheduler/${post.id}`)} />
       ) : (
         <>
           <div className="glass rounded-2xl p-4 sm:p-6 space-y-4">

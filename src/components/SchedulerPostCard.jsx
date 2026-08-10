@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Calendar, Clock, Eye, Pencil, XCircle, Trash2 } from 'lucide-react'
 import * as Icons from 'lucide-react'
-import StatusBadge from '../StatusBadge'
+import StatusBadge from './StatusBadge'
 import { platformIcons, platformColors } from '../data/postsData'
 
 export default function SchedulerPostCard({ post, onCancel, onDelete }) {

@@ -87,16 +87,18 @@ export const routeTitles = {
   '/dashboard/scheduler/:id': 'Scheduled Post',
   '/dashboard/campaigns': 'Campaigns',
   '/dashboard/analytics': 'Analytics',
+  '/dashboard/analytics/platforms': 'Platform Analytics',
+  '/dashboard/analytics/posts': 'Post Analytics',
   '/dashboard/settings': 'Settings',
   '/dashboard/profile': 'My Profile',
 }
 
 export const quickActions = [
   { label: 'Create New Post', icon: 'Plus', color: 'gradient-bg text-white', path: '/dashboard/posts/create' },
+  { label: 'View Analytics', icon: 'BarChart3', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400', path: '/dashboard/analytics' },
   { label: 'Schedule Post', icon: 'Calendar', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400', path: '/dashboard/scheduler/create' },
-  { label: 'Generate AI Caption', icon: 'Sparkles', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400', path: '/dashboard/content-generator' },
+  { label: 'Generate AI Caption', icon: 'Sparkles', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400', path: '/dashboard/content-generator' },
   { label: 'Open AI Assistant', icon: 'Bot', color: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400', path: '/dashboard/ai-assistant' },
-  { label: 'View AI History', icon: 'History', color: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400', path: '/dashboard/ai-history' },
 ]
 
 export const upcomingPosts = [

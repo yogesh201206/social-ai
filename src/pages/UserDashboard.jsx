@@ -83,8 +83,8 @@ export default function UserDashboard() {
             <TrendingUp className="h-5 w-5 text-brand-500" />
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Post Performance Overview</h3>
           </div>
-          <Link to="/dashboard/posts/published" className="text-sm text-brand-600 dark:text-brand-400 hover:text-brand-700 font-medium">
-            View all
+          <Link to="/dashboard/analytics" className="text-sm text-brand-600 dark:text-brand-400 hover:text-brand-700 font-medium flex items-center gap-1">
+            View Analytics →
           </Link>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">

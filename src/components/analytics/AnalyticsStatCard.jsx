@@ -25,8 +25,8 @@ export default function AnalyticsStatCard({ label, value, growth, positive = tru
       </div>
 
       <div className="mt-3">
-        <div className="flex items-baseline justify-between gap-2">
-          <p className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">
             {value}
           </p>
           <span

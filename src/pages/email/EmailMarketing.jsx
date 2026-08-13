@@ -52,7 +52,7 @@ export default function EmailMarketing() {
         <Link to="/dashboard/email-marketing/create">
           <Button variant="primary" size="md" className="shadow-lg shadow-brand-500/25">
             <Plus className="h-5 w-5" />
-            + Create Campaign
+            Create Campaign
           </Button>
         </Link>
       </div>

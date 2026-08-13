@@ -8,6 +8,7 @@ import { PostProvider } from './context/PostContext'
 import { AIProvider } from './context/AIContext'
 import { SchedulerProvider } from './context/SchedulerContext'
 import { AnalyticsProvider } from './context/AnalyticsContext'
+import { EmailMarketingProvider } from './context/EmailMarketingContext'
 import App from './App'
 import './index.css'
 
@@ -21,7 +22,9 @@ createRoot(document.getElementById('root')).render(
               <AIProvider>
                 <SchedulerProvider>
                   <AnalyticsProvider>
-                    <App />
+                    <EmailMarketingProvider>
+                      <App />
+                    </EmailMarketingProvider>
                   </AnalyticsProvider>
                 </SchedulerProvider>
               </AIProvider>

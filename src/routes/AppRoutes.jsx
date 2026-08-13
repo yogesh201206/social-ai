@@ -31,6 +31,10 @@ import Analytics from '../pages/analytics/Analytics'
 import PlatformAnalytics from '../pages/analytics/PlatformAnalytics'
 import PostAnalytics from '../pages/analytics/PostAnalytics'
 
+import EmailMarketing from '../pages/email/EmailMarketing'
+import CreateEmailCampaign from '../pages/email/CreateEmailCampaign'
+import EmailCampaignDetails from '../pages/email/EmailCampaignDetails'
+
 function PlaceholderPage({ title, description }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
@@ -76,7 +80,11 @@ export default function AppRoutes() {
         <Route path="/dashboard/scheduler" element={<Scheduler />} />
         <Route path="/dashboard/scheduler/create" element={<CreateSchedule />} />
         <Route path="/dashboard/scheduler/:id" element={<ScheduledPostDetails />} />
-        <Route path="/dashboard/campaigns" element={<PlaceholderPage title="Campaigns" description="Launch and manage marketing campaigns." />} />
+        <Route path="/dashboard/email-marketing" element={<EmailMarketing />} />
+        <Route path="/dashboard/email-marketing/create" element={<CreateEmailCampaign />} />
+        <Route path="/dashboard/email-marketing/:id" element={<EmailCampaignDetails />} />
+        <Route path="/dashboard/email-marketing/:id/edit" element={<CreateEmailCampaign />} />
+        <Route path="/dashboard/campaigns" element={<EmailMarketing />} />
         <Route path="/dashboard/analytics" element={<Analytics />} />
         <Route path="/dashboard/analytics/platforms" element={<PlatformAnalytics />} />
         <Route path="/dashboard/analytics/posts" element={<PostAnalytics />} />

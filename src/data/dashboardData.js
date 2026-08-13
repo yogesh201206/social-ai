@@ -63,7 +63,7 @@ export const userSidebarLinks = [
   { label: 'AI Assistant', icon: 'Bot', path: '/dashboard/ai-assistant' },
   { label: 'AI History', icon: 'History', path: '/dashboard/ai-history' },
   { label: 'Scheduler', icon: 'Calendar', path: '/dashboard/scheduler' },
-  { label: 'Campaigns', icon: 'Megaphone', path: '/dashboard/campaigns' },
+  { label: 'Email Marketing', icon: 'Mail', path: '/dashboard/email-marketing' },
   { label: 'Analytics', icon: 'BarChart3', path: '/dashboard/analytics' },
   { label: 'Settings', icon: 'Settings', path: '/dashboard/settings' },
 ]
@@ -85,7 +85,11 @@ export const routeTitles = {
   '/dashboard/scheduler': 'Scheduler',
   '/dashboard/scheduler/create': 'Schedule Post',
   '/dashboard/scheduler/:id': 'Scheduled Post',
-  '/dashboard/campaigns': 'Campaigns',
+  '/dashboard/email-marketing': 'Email Marketing',
+  '/dashboard/email-marketing/create': 'Create Email Campaign',
+  '/dashboard/email-marketing/:id': 'Email Campaign Details',
+  '/dashboard/email-marketing/:id/edit': 'Edit Email Campaign',
+  '/dashboard/campaigns': 'Email Marketing',
   '/dashboard/analytics': 'Analytics',
   '/dashboard/analytics/platforms': 'Platform Analytics',
   '/dashboard/analytics/posts': 'Post Analytics',
@@ -95,6 +99,7 @@ export const routeTitles = {
 
 export const quickActions = [
   { label: 'Create New Post', icon: 'Plus', color: 'gradient-bg text-white', path: '/dashboard/posts/create' },
+  { label: 'Create Email Campaign', icon: 'Mail', color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400', path: '/dashboard/email-marketing/create' },
   { label: 'View Analytics', icon: 'BarChart3', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400', path: '/dashboard/analytics' },
   { label: 'Schedule Post', icon: 'Calendar', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400', path: '/dashboard/scheduler/create' },
   { label: 'Generate AI Caption', icon: 'Sparkles', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400', path: '/dashboard/content-generator' },

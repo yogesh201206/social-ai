@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Menu, Bell, Moon, Sun, User, Settings, LogOut, CheckCheck, Trash2 } from 'lucide-react'
+import { Menu, Bell, Moon, Sun, User, Settings, LogOut, CheckCheck, Trash2, ShieldCheck } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 import { useNotifications } from '../context/NotificationContext'
 import { userProfile } from '../data/dashboardData'
@@ -167,6 +167,14 @@ export default function DashboardTopbar({ title, onMenuClick }) {
                   >
                     <Settings className="h-4 w-4" />
                     Settings
+                  </Link>
+                  <Link
+                    to="/admin"
+                    onClick={() => setShowProfile(false)}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 font-semibold transition-colors"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    Admin Panel
                   </Link>
                   <button
                     onClick={handleLogout}

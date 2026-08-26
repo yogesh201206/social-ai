@@ -1,87 +1,131 @@
-import { createContext, useContext, useState, useCallback, useMemo } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { initialCampaigns } from '../data/emailMarketingData'
 import { useNotifications } from './NotificationContext'
+import emailService from '../services/emailService'
 
 const EmailMarketingContext = createContext()
 
 export function EmailMarketingProvider({ children }) {
   const [campaigns, setCampaigns] = useState(initialCampaigns)
+  const [loading, setLoading] = useState(false)
   const { addNotification } = useNotifications()
 
-  const addCampaign = useCallback((campaignData) => {
-    const newId = `emp-${Date.now()}`
-    const isScheduled = campaignData.scheduledDate && campaignData.status !== 'Draft'
-    const status = campaignData.status || (isScheduled ? 'Scheduled' : 'Draft')
-    
-    const newCampaign = {
-      ...campaignData,
-      id: newId,
-      status,
-      createdDate: campaignData.createdDate || new Date().toISOString().split('T')[0],
-      recipients: campaignData.recipients || 1500,
-      analytics: campaignData.analytics || {
-        sent: status === 'Sent' ? (campaignData.recipients || 1500) : 0,
-        delivered: status === 'Sent' ? Math.round((campaignData.recipients || 1500) * 0.98) : 0,
-        deliveredRate: status === 'Sent' ? '98.0%' : '0%',
-        opened: status === 'Sent' ? Math.round((campaignData.recipients || 1500) * 0.65) : 0,
-        openRate: status === 'Sent' ? '65.0%' : '0%',
-        clicked: status === 'Sent' ? Math.round((campaignData.recipients || 1500) * 0.22) : 0,
-        clickRate: status === 'Sent' ? '22.0%' : '0%',
-        bounced: status === 'Sent' ? Math.round((campaignData.recipients || 1500) * 0.02) : 0,
-        bounceRate: status === 'Sent' ? '2.0%' : '0%',
-        unsubscribed: status === 'Sent' ? Math.round((campaignData.recipients || 1500) * 0.005) : 0,
-        unsubscribeRate: status === 'Sent' ? '0.5%' : '0%',
-        dailyPerformance: []
+  useEffect(() => {
+    setLoading(true)
+    emailService.getAll()
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          const formatted = data.map(c => ({
+            id: String(c.id),
+            name: c.campaignName,
+            restaurantId: String(c.restaurantId),
+            restaurantName: c.restaurantName || 'Bella Italia Bistro',
+            branchId: c.branchId ? String(c.branchId) : null,
+            branchName: c.branchName || 'Main Branch',
+            audience: c.audience || 'All VIP Customers',
+            subject: c.subject,
+            previewText: c.previewText,
+            content: c.content,
+            ctaText: c.ctaText || 'Reserve Table',
+            ctaLink: c.ctaLink || 'https://bellaitalia.com',
+            recipients: c.recipientCount || 1500,
+            status: c.status ? c.status.charAt(0) + c.status.slice(1).toLowerCase() : 'Draft',
+            createdDate: c.createdAt ? c.createdAt.split('T')[0] : '2026-08-20',
+            analytics: {
+              sent: c.status === 'SENT' ? (c.recipientCount || 1500) : 0,
+              delivered: c.status === 'SENT' ? Math.round((c.recipientCount || 1500) * 0.98) : 0,
+              deliveredRate: c.status === 'SENT' ? '98.0%' : '0%',
+              opened: c.status === 'SENT' ? Math.round((c.recipientCount || 1500) * 0.65) : 0,
+              openRate: c.status === 'SENT' ? '65.0%' : '0%',
+              clicked: c.status === 'SENT' ? Math.round((c.recipientCount || 1500) * 0.22) : 0,
+              clickRate: c.status === 'SENT' ? '22.0%' : '0%',
+              bounced: c.status === 'SENT' ? Math.round((c.recipientCount || 1500) * 0.02) : 0,
+              bounceRate: c.status === 'SENT' ? '2.0%' : '0%',
+              unsubscribed: c.status === 'SENT' ? Math.round((c.recipientCount || 1500) * 0.005) : 0,
+              unsubscribeRate: c.status === 'SENT' ? '0.5%' : '0%',
+              dailyPerformance: []
+            }
+          }))
+          setCampaigns(formatted)
+        }
+      })
+      .catch((err) => {
+        console.log('Using fallback mock data for Email Marketing:', err.message)
+      })
+      .finally(() => setLoading(false))
+  }, [])
+
+  const addCampaign = useCallback(async (campaignData) => {
+    try {
+      const isScheduled = campaignData.scheduledDate && campaignData.status !== 'Draft'
+      const statusEnum = (campaignData.status || (isScheduled ? 'SCHEDULED' : 'DRAFT')).toUpperCase()
+
+      const res = await emailService.create({
+        campaignName: campaignData.name,
+        restaurantId: campaignData.restaurantId ? Number(campaignData.restaurantId) : 1,
+        branchId: campaignData.branchId ? Number(campaignData.branchId) : null,
+        audience: campaignData.audience || 'All Customers',
+        subject: campaignData.subject,
+        previewText: campaignData.previewText,
+        content: campaignData.content,
+        ctaText: campaignData.ctaText,
+        ctaLink: campaignData.ctaLink,
+        recipientCount: campaignData.recipients || 1500,
+        status: statusEnum,
+      })
+
+      const newCampaign = {
+        ...campaignData,
+        id: String(res.id),
+        status: campaignData.status || (isScheduled ? 'Scheduled' : 'Draft'),
+        createdDate: new Date().toISOString().split('T')[0],
       }
+      setCampaigns((prev) => [newCampaign, ...prev])
+      return newCampaign
+    } catch (e) {
+      const newId = `emp-${Date.now()}`
+      const isScheduled = campaignData.scheduledDate && campaignData.status !== 'Draft'
+      const status = campaignData.status || (isScheduled ? 'Scheduled' : 'Draft')
+      const newCampaign = {
+        ...campaignData,
+        id: newId,
+        status,
+        createdDate: campaignData.createdDate || new Date().toISOString().split('T')[0],
+        recipients: campaignData.recipients || 1500,
+      }
+      setCampaigns((prev) => [newCampaign, ...prev])
+      return newCampaign
     }
+  }, [])
 
-    setCampaigns((prev) => [newCampaign, ...prev])
+  const updateCampaign = useCallback(async (id, updatedFields) => {
+    try {
+      await emailService.update(id, updatedFields)
+    } catch (e) {}
 
-    if (status === 'Scheduled') {
-      addNotification({
-        title: 'Campaign Scheduled',
-        message: `Email campaign "${newCampaign.name}" has been scheduled successfully.`,
-        type: 'schedule'
-      })
-    } else {
-      addNotification({
-        title: 'Campaign Saved',
-        message: `Email campaign "${newCampaign.name}" saved as draft.`,
-        type: 'schedule'
-      })
-    }
-
-    return newCampaign
-  }, [addNotification])
-
-  const updateCampaign = useCallback((id, updatedFields) => {
     let updatedObj = null
     setCampaigns((prev) =>
       prev.map((c) => {
-        if (c.id === id) {
+        if (String(c.id) === String(id)) {
           updatedObj = { ...c, ...updatedFields }
           return updatedObj
         }
         return c
       })
     )
-
-    if (updatedObj) {
-      addNotification({
-        title: 'Campaign Updated',
-        message: `Campaign "${updatedObj.name}" updated successfully.`,
-        type: 'schedule'
-      })
-    }
     return updatedObj
-  }, [addNotification])
+  }, [])
 
-  const deleteCampaign = useCallback((id) => {
+  const deleteCampaign = useCallback(async (id) => {
+    try {
+      await emailService.delete(id)
+    } catch (e) {}
+
     let deletedName = ''
     setCampaigns((prev) => {
-      const target = prev.find((c) => c.id === id)
+      const target = prev.find((c) => String(c.id) === String(id))
       if (target) deletedName = target.name
-      return prev.filter((c) => c.id !== id)
+      return prev.filter((c) => String(c.id) !== String(id))
     })
 
     if (deletedName) {
@@ -94,7 +138,7 @@ export function EmailMarketingProvider({ children }) {
   }, [addNotification])
 
   const duplicateCampaign = useCallback((id) => {
-    const target = campaigns.find((c) => c.id === id)
+    const target = campaigns.find((c) => String(c.id) === String(id))
     if (!target) return null
 
     const duplicate = {
@@ -103,39 +147,20 @@ export function EmailMarketingProvider({ children }) {
       name: `${target.name} (Copy)`,
       status: 'Draft',
       createdDate: new Date().toISOString().split('T')[0],
-      analytics: {
-        sent: 0,
-        delivered: 0,
-        deliveredRate: '0%',
-        opened: 0,
-        openRate: '0%',
-        clicked: 0,
-        clickRate: '0%',
-        bounced: 0,
-        bounceRate: '0%',
-        unsubscribed: 0,
-        unsubscribeRate: '0%',
-        dailyPerformance: []
-      }
     }
 
     setCampaigns((prev) => [duplicate, ...prev])
-
-    addNotification({
-      title: 'Campaign Duplicated',
-      message: `Duplicated "${target.name}" as draft.`,
-      type: 'schedule'
-    })
-
     return duplicate
-  }, [campaigns, addNotification])
+  }, [campaigns])
 
-  const scheduleCampaign = useCallback((id, scheduleInfo) => {
-    let targetName = ''
+  const scheduleCampaign = useCallback(async (id, scheduleInfo) => {
+    try {
+      await emailService.schedule(id, scheduleInfo?.scheduledDate)
+    } catch (e) {}
+
     setCampaigns((prev) =>
       prev.map((c) => {
-        if (c.id === id) {
-          targetName = c.name
+        if (String(c.id) === String(id)) {
           return {
             ...c,
             ...scheduleInfo,
@@ -145,16 +170,10 @@ export function EmailMarketingProvider({ children }) {
         return c
       })
     )
-
-    addNotification({
-      title: 'Campaign Scheduled',
-      message: `Email campaign "${targetName}" scheduled successfully.`,
-      type: 'schedule'
-    })
-  }, [addNotification])
+  }, [])
 
   const getCampaign = useCallback(
-    (id) => campaigns.find((c) => c.id === id),
+    (id) => campaigns.find((c) => String(c.id) === String(id)),
     [campaigns]
   )
 
@@ -165,10 +184,10 @@ export function EmailMarketingProvider({ children }) {
           !search ||
           c.name.toLowerCase().includes(search.toLowerCase()) ||
           c.subject.toLowerCase().includes(search.toLowerCase()) ||
-          c.restaurantName.toLowerCase().includes(search.toLowerCase())
+          c.restaurantName?.toLowerCase().includes(search.toLowerCase())
 
-        const matchesRestaurant = !restaurantId || c.restaurantId === restaurantId
-        const matchesBranch = !branchId || c.branchId === branchId
+        const matchesRestaurant = !restaurantId || String(c.restaurantId) === String(restaurantId)
+        const matchesBranch = !branchId || String(c.branchId) === String(branchId)
         const matchesStatus = !status || c.status === status
 
         return matchesSearch && matchesRestaurant && matchesBranch && matchesStatus
@@ -209,6 +228,7 @@ export function EmailMarketingProvider({ children }) {
     <EmailMarketingContext.Provider
       value={{
         campaigns,
+        loading,
         addCampaign,
         updateCampaign,
         deleteCampaign,

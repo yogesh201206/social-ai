@@ -1,11 +1,13 @@
-import { createContext, useContext, useState, useCallback, useMemo } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { aiHistory as initialHistory } from '../data/aiHistory'
 import { generateAIContent } from '../data/aiResponses'
+import aiService from '../services/aiService'
 
 const AIContext = createContext()
 
 export function AIProvider({ children }) {
   const [history, setHistory] = useState(initialHistory)
+  const [loading, setLoading] = useState(false)
   const [chatMessages, setChatMessages] = useState([
     {
       id: 'welcome',
@@ -15,28 +17,63 @@ export function AIProvider({ children }) {
     },
   ])
 
-  const addToHistory = useCallback((entry) => {
-    const newEntry = {
-      ...entry,
-      id: `ai-${Date.now()}`,
-      generatedAt: entry.generatedAt || new Date().toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      }),
-    }
-    setHistory((prev) => [newEntry, ...prev])
-    return newEntry
+  useEffect(() => {
+    setLoading(true)
+    aiService.getHistory()
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          const formatted = data.map(h => ({
+            id: String(h.id),
+            restaurantName: h.restaurantName || 'Bella Italia Bistro',
+            contentType: h.contentType || 'Social Media Caption',
+            prompt: h.prompt,
+            generatedContent: h.generatedContent,
+            generatedAt: h.createdAt ? new Date(h.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
+          }))
+          setHistory(formatted)
+        }
+      })
+      .catch((err) => {
+        console.log('Using fallback mock data for AI History:', err.message)
+      })
+      .finally(() => setLoading(false))
   }, [])
 
-  const deleteFromHistory = useCallback((id) => {
-    setHistory((prev) => prev.filter((h) => h.id !== id))
+  const addToHistory = useCallback(async (entry) => {
+    try {
+      const res = await aiService.saveHistory({
+        restaurantId: entry.restaurantId ? Number(entry.restaurantId) : 1,
+        contentType: entry.contentType?.includes('Caption') ? 'Caption' : 'Caption',
+        prompt: entry.prompt || 'AI Prompt',
+        generatedContent: entry.generatedContent || entry.content || '',
+      })
+      const newEntry = {
+        ...entry,
+        id: String(res.id),
+        generatedAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      }
+      setHistory((prev) => [newEntry, ...prev])
+      return newEntry
+    } catch (e) {
+      const newEntry = {
+        ...entry,
+        id: `ai-${Date.now()}`,
+        generatedAt: entry.generatedAt || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      }
+      setHistory((prev) => [newEntry, ...prev])
+      return newEntry
+    }
+  }, [])
+
+  const deleteFromHistory = useCallback(async (id) => {
+    try {
+      await aiService.deleteHistory(id)
+    } catch (e) {}
+    setHistory((prev) => prev.filter((h) => String(h.id) !== String(id)))
   }, [])
 
   const getHistoryItem = useCallback(
-    (id) => history.find((h) => h.id === id),
+    (id) => history.find((h) => String(h.id) === String(id)),
     [history]
   )
 
@@ -84,6 +121,7 @@ export function AIProvider({ children }) {
     <AIContext.Provider
       value={{
         history,
+        loading,
         chatMessages,
         stats,
         addToHistory,

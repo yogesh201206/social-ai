@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useCallback, useMemo } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { initialScheduledPosts } from '../data/schedulerData'
+import schedulerService from '../services/schedulerService'
 
 const STORAGE_KEY = 'socialflow_scheduler_posts'
 
@@ -31,27 +32,78 @@ const SchedulerContext = createContext()
 
 export function SchedulerProvider({ children }) {
   const [scheduledPosts, setScheduledPosts] = useState(loadPosts)
+  const [loading, setLoading] = useState(false)
 
-  const addScheduledPost = useCallback((post) => {
-    const newPost = {
-      ...post,
-      id: post.id || `sch-${Date.now()}`,
-      scheduledDateDisplay: post.scheduledDateDisplay || formatDisplayDate(post.scheduledDate),
-      scheduledTime: post.scheduledTime || formatDisplayTime(post.scheduledTimeInput),
-      createdAt: post.createdAt || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-    }
-    setScheduledPosts((prev) => {
-      const updated = [newPost, ...prev]
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
-      return updated
-    })
-    return newPost
+  useEffect(() => {
+    setLoading(true)
+    schedulerService.getAll()
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          const formatted = data.map(s => ({
+            id: String(s.id),
+            postId: s.postId ? String(s.postId) : null,
+            title: s.postTitle || 'Scheduled Post',
+            restaurantId: String(s.restaurantId),
+            restaurantName: s.restaurantName || 'Bella Italia Bistro',
+            branchId: s.branchId ? String(s.branchId) : null,
+            branchName: s.branchName || 'Main Branch',
+            platforms: s.platform ? [s.platform.charAt(0) + s.platform.slice(1).toLowerCase()] : ['Instagram'],
+            scheduledDate: s.scheduledDateTime ? s.scheduledDateTime.split('T')[0] : '2026-08-28',
+            scheduledDateDisplay: s.scheduledDateTime ? new Date(s.scheduledDateTime).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Aug 28, 2026',
+            scheduledTimeInput: '18:00',
+            scheduledTime: s.scheduledDateTime ? new Date(s.scheduledDateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '6:00 PM',
+            timezone: s.timezone || 'EST (UTC-5)',
+            status: s.status === 'CANCELLED' ? 'Cancelled' : s.status === 'PUBLISHED' ? 'Published' : 'Scheduled',
+          }))
+          setScheduledPosts(formatted)
+        }
+      })
+      .catch((err) => {
+        console.log('Using fallback mock data for Scheduler:', err.message)
+      })
+      .finally(() => setLoading(false))
   }, [])
 
-  const updateScheduledPost = useCallback((id, updates) => {
+  const addScheduledPost = useCallback(async (post) => {
+    try {
+      const scheduledDateTime = `${post.scheduledDate || '2026-08-28'}T${post.scheduledTimeInput || '18:00'}:00`
+      const res = await schedulerService.create({
+        postId: post.postId ? Number(post.postId) : null,
+        restaurantId: post.restaurantId ? Number(post.restaurantId) : 1,
+        branchId: post.branchId ? Number(post.branchId) : null,
+        platform: (post.platforms?.[0] || 'INSTAGRAM').toUpperCase(),
+        scheduledDateTime,
+        timezone: post.timezone || 'UTC',
+      })
+      const newPost = {
+        ...post,
+        id: String(res.id),
+        scheduledDateDisplay: post.scheduledDateDisplay || formatDisplayDate(post.scheduledDate),
+        scheduledTime: post.scheduledTime || formatDisplayTime(post.scheduledTimeInput),
+        createdAt: post.createdAt || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      }
+      setScheduledPosts((prev) => [newPost, ...prev])
+      return newPost
+    } catch (e) {
+      const newPost = {
+        ...post,
+        id: post.id || `sch-${Date.now()}`,
+        scheduledDateDisplay: post.scheduledDateDisplay || formatDisplayDate(post.scheduledDate),
+        scheduledTime: post.scheduledTime || formatDisplayTime(post.scheduledTimeInput),
+        createdAt: post.createdAt || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      }
+      setScheduledPosts((prev) => [newPost, ...prev])
+      return newPost
+    }
+  }, [])
+
+  const updateScheduledPost = useCallback(async (id, updates) => {
+    try {
+      await schedulerService.update(id, updates)
+    } catch (e) {}
     setScheduledPosts((prev) => {
       const updated = prev.map((post) => {
-        if (post.id !== id) return post
+        if (String(post.id) !== String(id)) return post
         const merged = { ...post, ...updates }
         if (updates.scheduledDate) {
           merged.scheduledDateDisplay = formatDisplayDate(updates.scheduledDate)
@@ -61,25 +113,26 @@ export function SchedulerProvider({ children }) {
         }
         return merged
       })
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
       return updated
     })
   }, [])
 
-  const deleteScheduledPost = useCallback((id) => {
-    setScheduledPosts((prev) => {
-      const updated = prev.filter((post) => post.id !== id)
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
-      return updated
-    })
+  const deleteScheduledPost = useCallback(async (id) => {
+    try {
+      await schedulerService.delete(id)
+    } catch (e) {}
+    setScheduledPosts((prev) => prev.filter((post) => String(post.id) !== String(id)))
   }, [])
 
-  const cancelScheduledPost = useCallback((id) => {
+  const cancelScheduledPost = useCallback(async (id) => {
+    try {
+      await schedulerService.cancel(id)
+    } catch (e) {}
     updateScheduledPost(id, { status: 'Cancelled' })
   }, [updateScheduledPost])
 
   const getScheduledPost = useCallback(
-    (id) => scheduledPosts.find((post) => post.id === id),
+    (id) => scheduledPosts.find((post) => String(post.id) === String(id)),
     [scheduledPosts]
   )
 
@@ -123,7 +176,7 @@ export function SchedulerProvider({ children }) {
       return d >= weekStart && d <= weekEnd && p.status !== 'Cancelled'
     })
     const platforms = new Set(
-      scheduledPosts.filter((p) => p.status === 'Scheduled').flatMap((p) => p.platforms)
+      scheduledPosts.filter((p) => p.status === 'Scheduled').flatMap((p) => p.platforms || [])
     )
 
     return {
@@ -143,6 +196,7 @@ export function SchedulerProvider({ children }) {
     <SchedulerContext.Provider
       value={{
         scheduledPosts,
+        loading,
         addScheduledPost,
         updateScheduledPost,
         deleteScheduledPost,

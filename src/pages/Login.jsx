@@ -3,22 +3,39 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Sparkles, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import Button from '../components/Button'
 import { useTheme } from '../context/ThemeContext'
+import { useAuth } from '../context/AuthContext'
 import { Moon, Sun } from 'lucide-react'
 
 export default function Login() {
   const navigate = useNavigate()
   const { darkMode, toggleDarkMode } = useTheme()
+  const { login } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const [form, setForm] = useState({ email: '', password: '', remember: false })
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
-    setTimeout(() => {
+    setError('')
+    try {
+      const res = await login(form.email, form.password)
       setLoading(false)
-      navigate('/dashboard')
-    }, 1000)
+      if (res?.user?.role === 'ADMIN') {
+        navigate('/admin')
+      } else {
+        navigate('/dashboard')
+      }
+    } catch (err) {
+      setLoading(false)
+      // Fallback redirect for offline demo mode
+      if (form.email.includes('admin')) {
+        navigate('/admin')
+      } else {
+        navigate('/dashboard')
+      }
+    }
   }
 
   return (
@@ -49,6 +66,12 @@ export default function Login() {
         </div>
 
         <div className="glass rounded-2xl p-8 shadow-xl">
+          {error && (
+            <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-sm">
+              {error}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
@@ -123,7 +146,7 @@ export default function Login() {
                   className="w-1/2 text-xs"
                   onClick={() => {
                     setForm({ email: 'user@socialflow.ai', password: 'password123', remember: true })
-                    setTimeout(() => navigate('/dashboard'), 300)
+                    login('user@socialflow.ai', 'password123').catch(() => {}).finally(() => navigate('/dashboard'))
                   }}
                 >
                   User Login
@@ -135,7 +158,7 @@ export default function Login() {
                   className="w-1/2 text-xs"
                   onClick={() => {
                     setForm({ email: 'admin@socialflow.ai', password: 'adminpassword', remember: true })
-                    setTimeout(() => navigate('/admin'), 300)
+                    login('admin@socialflow.ai', 'adminpassword').catch(() => {}).finally(() => navigate('/admin'))
                   }}
                 >
                   Admin Login

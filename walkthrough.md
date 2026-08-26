@@ -1,85 +1,96 @@
-# Phase 8 – Admin Panel & User Management Module Walkthrough
+# Phase 9 – Backend Development & Database Integration Walkthrough
 
-Phase 8 has been fully implemented for SocialFlow AI! The Admin Panel provides complete platform monitoring, user administration, restaurant management, analytics reporting, and global configuration capabilities.
+## Summary of Accomplishments
 
----
-
-## Accomplished Steps & Deliverables
-
-### 1. Data & State Management Layer
-- **`src/data/adminData.js`**: Created comprehensive mock dataset containing platform stats (Total Users: 248, Active Users: 216, Total Restaurants: 86, Total Branches: 142, Total Posts: 4,820, Scheduled Posts: 684, AI Generations: 12.8K, Active Campaigns: 94), 12 detailed user accounts, 8 restaurant entities with branches and performance metrics, activity timeline datasets, and admin settings.
-- **`src/context/AdminContext.jsx`**: Created `AdminProvider` and `useAdmin()` hook managing state for users, restaurants, reports, and settings. Exposes state mutation helpers (`updateUserStatus`, `deleteUser`, `updateRestaurantStatus`, `approveRestaurant`, `deleteRestaurant`, `updateAdminSettings`) integrated with `NotificationContext` for instant toast notifications.
+Phase 9 successfully delivers the complete **Spring Boot backend** and **MySQL database integration** for **SocialFlow AI**, along with a unified frontend API service layer and Context connections.
 
 ---
 
-### 2. Admin Reusable Components
-- **`src/components/admin/AdminConfirmationModal.jsx`**: Built a reusable modal dialog for status-altering and destructive actions (Activate, Deactivate, Suspend, Approve, Delete) with status icons, warning text, and action buttons.
-- **`src/components/admin/AdminGuard.jsx`**: Built an admin security role guard simulating access control and providing a fallback "Access Denied" view.
+### 1. Spring Boot Backend Project (`socialflow-backend`)
+
+#### Project Setup
+- **Framework**: Java 17+, Spring Boot 3.2.3, Maven.
+- **Dependencies**: Spring Web, Spring Data JPA, Spring Security, Jakarta Validation, MySQL Driver, H2 Database (zero-config fallback), JJWT (0.11.5), Lombok.
+- **Config**: Environment variable driven (`DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`).
+
+#### Entities & Schema (`com.socialflow.entity`)
+- `User`: Handles user registration, authentication, plan, role (`USER`, `ADMIN`), status (`ACTIVE`, `INACTIVE`, `SUSPENDED`).
+- `Restaurant`: Stores restaurant details, category, business type, owner reference.
+- `Branch`: Multi-branch tracking linked to restaurants.
+- `Post`: Social media post drafts, scheduled, and published content with image URL and hashtag storage.
+- `ScheduledPost`: Handles post scheduling timestamps, platforms, and timezone info.
+- `AIHistory`: Persists AI-generated captions, hashtags, CTAs, marketing ideas, and email content.
+- `EmailCampaign`: Stores campaign subject, preview text, content, recipient counts, and scheduling status.
+- `Analytics`: Per-restaurant & branch performance metrics (reach, impressions, likes, comments, shares, engagement rate).
+
+#### Security & Authentication (`com.socialflow.security` & `config`)
+- **BCrypt Password Hashing**: Passwords stored securely.
+- **JWT Token Provider**: Stateless JWT generation and verification.
+- **Role-Based Authorization**:
+  - `/api/auth/**`: Public access.
+  - `/api/admin/**`: Protected with `ROLE_ADMIN`.
+  - `/api/**`: Protected with valid Bearer Token.
+- **CORS Config**: Configured for Vite frontend dev server (`http://localhost:5173`).
+
+#### Layered Architecture
+- **Repositories**: JPA interfaces with query methods (`findByEmail`, `findByOwnerEmail`, `findByStatus`, etc.).
+- **Services**: Clean business logic layer (`AuthService`, `UserService`, `RestaurantService`, `BranchService`, `PostService`, `ScheduledPostService`, `AIHistoryService`, `EmailCampaignService`, `AnalyticsService`, `AdminService`).
+- **Controllers**: 10 REST Controllers providing endpoints for Auth, Users, Restaurants, Branches, Posts, Schedules, AI History, Campaigns, Analytics, and Admin metrics.
+- **DataInitializer**: Auto-seeds initial demo users (`user@socialflow.ai` / `password123`, `admin@socialflow.ai` / `adminpassword`), restaurant, posts, campaigns, and analytics records.
 
 ---
 
-### 3. Complete Admin Modules & Routes
+### 2. Frontend API Service Layer (`src/services/`)
 
-#### A. Admin Dashboard (`/admin`)
-- **Header**: Title *"Admin Dashboard"*, Subtitle *"Monitor and manage the SocialFlow AI platform."*
-- **8 Statistics Cards**: Total Users (248), Active Users (216), Total Restaurants (86), Total Branches (142), Total Posts (4,820), Scheduled Posts (684), AI Generations (12.8K), Active Campaigns (94).
-- **Platform Overview**: Highlights for New Users (+298), New Restaurants (+127), Posts Created (6,580), AI Generations (18,050), Campaigns Created (+204).
-- **Interactive SVG Chart**: Dynamic metric filter toggles (All Metrics, Users & Restaurants, Posts & AI Generations) rendered using `AreaChartComponent`.
-- **System Health & Previews**: Live preview tables for recently registered users and connected restaurants.
-
-#### B. User Management (`/admin/users`)
-- **Route**: `/admin/users`
-- **Search**: Multi-field search by Name, Email, or Business Name.
-- **Filters**: Status Filter (*All, Active, Inactive, Suspended*), Plan Filter (*All, Starter, Professional, Enterprise, Trial*), Business Type Filter.
-- **Data Table**: Displays User (Name & Email), Business, Business Type, Restaurants count, Joined Date, Plan, Status badge, and Action buttons.
-- **Actions**: View details, Activate, Deactivate, Suspend, and Delete with modal confirmations.
-
-#### C. User Details (`/admin/users/:id`)
-- **Route**: `/admin/users/:id`
-- **Profile Overview**: Profile card displaying Name, Email, Phone, Business Name, Business Type, Plan, Joined Date, and Status badge.
-- **5 Metric Cards**: Restaurants, Branches, Posts, AI Generations, Campaigns.
-- **Activity Feed**: Tabbed interface displaying Recent Posts, Recent AI Generations, and Recent Email Campaigns.
-- **Status Controls**: Action buttons (Activate, Deactivate, Suspend, Delete) triggered via confirmation modal.
-
-#### D. Restaurant Management (`/admin/restaurants`)
-- **Route**: `/admin/restaurants`
-- **Search**: Search by Restaurant Name, Owner, or Location.
-- **Filters**: Category Filter (*All, Italian, Indian, Mexican, Asian Fusion, American, Mediterranean, Cafe, Seafood*), Status Filter (*All, Active, Pending, Inactive*).
-- **Data Table**: Displays Restaurant Name, Owner, Category, Branches count, Location, Posts count, Status, Created Date, and Action triggers.
-- **Actions**: View details, Approve (for pending), Activate, Deactivate, Delete with modal confirmation.
-
-#### E. Restaurant Details (`/admin/restaurants/:id`)
-- **Route**: `/admin/restaurants/:id`
-- **Restaurant Info Card**: Name, Owner, Owner Email, Category, Business Type, Contact, Address, Date Onboarded.
-- **Performance Metrics**: Published Posts, Scheduled Posts, AI Generations, Active Campaigns, Audience Reach.
-- **Branch Breakdown**: Table displaying all branch locations, addresses, contact details, and branch statuses.
-- **Action Controls**: Approve, Activate, Deactivate, Delete modal triggers.
-
-#### F. Admin Reports & Analytics (`/admin/reports`)
-- **Route**: `/admin/reports`
-- **Date Range Filters**: *Last 7 Days*, *Last 30 Days*, *Last 3 Months*, *This Year*.
-- **Entity Filters**: Restaurant Filter, Business Type Filter.
-- **Report Visualizers**: Visual SVG area charts for User Growth, Restaurant Growth, Post Activity & AI Usage, and Campaign Activity.
-- **Data Export**: Export report metrics to text/csv file.
-
-#### G. Admin Settings (`/admin/settings`)
-- **Route**: `/admin/settings`
-- **Platform Settings**: Toggle switches for *Allow New User Registration*, *Allow New Restaurant Registration*, *System Maintenance Mode*, and Default Signup Plan.
-- **Notification Settings**: Toggle for *System Email Notifications* and Admin Alert email inputs.
-- **Security Settings**: Toggle for *Enforce 2FA for Administrators*, Max Login Attempts, Session Timeout.
-- **System Preferences**: Toggle for *AI Content Auto-Moderation*, Default Currency, Support Email.
+- `api.js`: Base fetch client configured with `VITE_API_BASE_URL` and automatic JWT `Authorization: Bearer <token>` insertion.
+- `authService.js`: login, register, getCurrentUser, logout.
+- `restaurantService.js`: CRUD operations for restaurants & branches.
+- `postService.js`: CRUD, draft, scheduled, published, schedule, and cancel post endpoints.
+- `schedulerService.js`: CRUD and schedule cancellation endpoints.
+- `aiService.js`: AI generation history fetch, save, and delete.
+- `emailService.js`: Email campaign management & scheduling.
+- `analyticsService.js`: Overview stats and platform analytics.
+- `adminService.js`: Dashboard metrics, user list, restaurant list, reports.
+- `userService.js`: User status updates (Activate, Deactivate, Suspend).
 
 ---
 
-## Verification Results
+### 3. Frontend Context Connections (`src/context/`)
 
-| Page / Feature | Route | Status | Notes |
-|---|---|---|---|
-| Admin Dashboard | `/admin` | ✅ Verified | 8 stat cards, overview chart, system health metrics |
-| User Management | `/admin/users` | ✅ Verified | Search, multi-filters, responsive table, modal confirmations |
-| User Details | `/admin/users/:id` | ✅ Verified | Profile card, usage stats, tabbed activity feed, status actions |
-| Restaurant Management | `/admin/restaurants` | ✅ Verified | Search by name/owner/location, category & status filters |
-| Restaurant Details | `/admin/restaurants/:id` | ✅ Verified | Restaurant info, performance stats, branch table |
-| Admin Reports | `/admin/reports` | ✅ Verified | Date range filters, multi-metric visual charts, data export |
-| Admin Settings | `/admin/settings` | ✅ Verified | Toggle switches, local state saving, toast notifications |
-| Admin Sidebar & Nav | `/admin/*` | ✅ Verified | Works seamlessly with existing `DashboardLayout` |
+- **AuthContext**: React context for authentication, JWT storage, user login/register/logout.
+- **RestaurantContext, PostContext, AIContext, SchedulerContext, AnalyticsContext, EmailMarketingContext, AdminContext**:
+  - Connected to live backend REST API endpoints.
+  - Features **seamless fallback to mock data** if the API is loading or offline, ensuring existing Phase 1–8 functionality and UI remains 100% operational!
+
+---
+
+## Instructions to Run
+
+### Running the Backend
+1. Navigate to `socialflow-backend`:
+   ```bash
+   cd socialflow-backend
+   ```
+2. Run using Maven:
+   ```bash
+   mvn spring-boot:run
+   ```
+   *(By default, connects to MySQL `socialflow_ai` or falls back gracefully to H2 in-memory DB at port `8080`)*
+
+### Running the Frontend
+1. In `socialflow-ai` root directory:
+   ```bash
+   npm run dev
+   ```
+2. Open `http://localhost:5173` in your browser.
+
+---
+
+## Postman / API Testing
+
+- `POST /api/auth/register`: `{ "name": "John", "email": "john@test.com", "password": "password123" }`
+- `POST /api/auth/login`: `{ "email": "user@socialflow.ai", "password": "password123" }`
+- `GET /api/auth/me`: Returns current authenticated user details.
+- `GET /api/restaurants`: Returns user restaurants.
+- `GET /api/posts`: Returns posts list.
+- `GET /api/admin/dashboard`: Returns admin metrics (requires `ROLE_ADMIN`).

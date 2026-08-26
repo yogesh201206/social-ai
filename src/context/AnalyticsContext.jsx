@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useMemo, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react'
 import {
   initialOverviewStats,
   timeSeriesData,
@@ -7,6 +7,7 @@ import {
   postAnalyticsList,
 } from '../data/analyticsData'
 import { useRestaurants } from './RestaurantContext'
+import analyticsService from '../services/analyticsService'
 
 const AnalyticsContext = createContext()
 
@@ -19,40 +20,39 @@ export function AnalyticsProvider({ children }) {
   const [selectedPlatform, setSelectedPlatform] = useState('all')
   const [selectedDateRange, setSelectedDateRange] = useState('30d')
   const [searchQuery, setSearchQuery] = useState('')
-  const [sortBy, setSortBy] = useState('reach') // 'reach' | 'likes' | 'engagement' | 'engagementRate'
-  const [sortOrder, setSortOrder] = useState('desc') // 'asc' | 'desc'
+  const [sortBy, setSortBy] = useState('reach')
+  const [sortOrder, setSortOrder] = useState('desc')
+  const [apiOverview, setApiOverview] = useState(null)
 
-  // Reset branch if selected restaurant changes
+  useEffect(() => {
+    analyticsService.getOverview()
+      .then((data) => {
+        if (data) setApiOverview(data)
+      })
+      .catch((e) => {})
+  }, [selectedRestaurant, selectedBranch])
+
   const handleSetRestaurant = useCallback((restId) => {
     setSelectedRestaurant(restId)
     setSelectedBranch('all')
   }, [])
 
-  // Available branches for selected restaurant
   const availableBranches = useMemo(() => {
     if (selectedRestaurant === 'all') {
       return restaurants.flatMap((r) => r.branches || [])
     }
-    const found = restaurants.find((r) => r.id === selectedRestaurant)
+    const found = restaurants.find((r) => String(r.id) === String(selectedRestaurant))
     return found ? found.branches || [] : []
   }, [restaurants, selectedRestaurant])
 
-  // Multiplier for mock data according to selected filters to simulate dynamic real-time data
   const filterMultiplier = useMemo(() => {
     let factor = 1.0
-    if (selectedRestaurant !== 'all') {
-      factor *= 0.35 // single restaurant share
-    }
-    if (selectedBranch !== 'all') {
-      factor *= 0.45 // single branch share
-    }
-    if (selectedPlatform !== 'all') {
-      factor *= 0.25 // single platform share
-    }
+    if (selectedRestaurant !== 'all') factor *= 0.35
+    if (selectedBranch !== 'all') factor *= 0.45
+    if (selectedPlatform !== 'all') factor *= 0.25
     return factor
   }, [selectedRestaurant, selectedBranch, selectedPlatform])
 
-  // Get dynamic timeline data according to date range and multiplier
   const currentTimelineData = useMemo(() => {
     const rawTimeline = timeSeriesData[selectedDateRange] || timeSeriesData['30d']
     return rawTimeline.map((item) => {
@@ -62,17 +62,13 @@ export function AnalyticsProvider({ children }) {
       let fReach = Math.max(100, Math.floor(item.reach * filterMultiplier))
       let fImpressions = Math.max(200, Math.floor(item.impressions * filterMultiplier))
 
-      // Platform specific filter overrides if selectedPlatform is set
       if (selectedPlatform !== 'all') {
         const platName = selectedPlatform.toLowerCase()
-        if (platName.includes('instagram')) {
-          fLikes = Math.floor(fLikes * 1.5)
-        } else if (platName.includes('tiktok')) {
+        if (platName.includes('instagram')) fLikes = Math.floor(fLikes * 1.5)
+        else if (platName.includes('tiktok')) {
           fLikes = Math.floor(fLikes * 2.2)
           fShares = Math.floor(fShares * 2.5)
-        } else if (platName.includes('youtube')) {
-          fComments = Math.floor(fComments * 1.8)
-        }
+        } else if (platName.includes('youtube')) fComments = Math.floor(fComments * 1.8)
       }
 
       return {
@@ -86,13 +82,21 @@ export function AnalyticsProvider({ children }) {
     })
   }, [selectedDateRange, filterMultiplier, selectedPlatform])
 
-  // Dynamic Overview Stats
   const overviewStats = useMemo(() => {
-    const rawReach = Math.round(initialOverviewStats.totalReach.raw * filterMultiplier)
-    const rawImp = Math.round(initialOverviewStats.impressions.raw * filterMultiplier)
-    const rawEng = Math.round(initialOverviewStats.engagement.raw * filterMultiplier)
-    const rawFol = Math.round(initialOverviewStats.followers.raw * (filterMultiplier > 0.5 ? filterMultiplier : filterMultiplier * 1.8))
-    const rawPosts = Math.max(1, Math.round(initialOverviewStats.postsPublished.raw * filterMultiplier))
+    const baseReach = apiOverview?.totalReach || initialOverviewStats.totalReach.raw
+    const baseImp = apiOverview?.totalImpressions || initialOverviewStats.impressions.raw
+    const baseLikes = apiOverview?.totalLikes || 24600
+    const baseComm = apiOverview?.totalComments || 3820
+    const baseShares = apiOverview?.totalShares || 1940
+    const baseEng = baseLikes + baseComm + baseShares
+    const baseFol = apiOverview?.totalFollowers || initialOverviewStats.followers.raw
+    const basePosts = apiOverview?.totalPosts || initialOverviewStats.postsPublished.raw
+
+    const rawReach = Math.round(baseReach * filterMultiplier)
+    const rawImp = Math.round(baseImp * filterMultiplier)
+    const rawEng = Math.round(baseEng * filterMultiplier)
+    const rawFol = Math.round(baseFol * (filterMultiplier > 0.5 ? filterMultiplier : filterMultiplier * 1.8))
+    const rawPosts = Math.max(1, Math.round(basePosts * filterMultiplier))
 
     const formatK = (val) => (val >= 1000 ? `${(val / 1000).toFixed(1)}K` : String(val))
 
@@ -107,9 +111,8 @@ export function AnalyticsProvider({ children }) {
         value: `${(rawReach > 0 ? ((rawEng / rawReach) * 100).toFixed(1) : 7.6)}%`,
       },
     }
-  }, [filterMultiplier])
+  }, [filterMultiplier, apiOverview])
 
-  // Filtered Platform Performance Data
   const platformData = useMemo(() => {
     return platformPerformanceData.filter((p) => {
       if (selectedPlatform === 'all') return true
@@ -119,16 +122,15 @@ export function AnalyticsProvider({ children }) {
     })
   }, [selectedPlatform])
 
-  // Filtered Post Analytics List
   const filteredPosts = useMemo(() => {
     let result = [...postAnalyticsList]
 
     if (selectedRestaurant !== 'all') {
-      result = result.filter((p) => p.restaurantId === selectedRestaurant)
+      result = result.filter((p) => String(p.restaurantId) === String(selectedRestaurant))
     }
 
     if (selectedBranch !== 'all') {
-      result = result.filter((p) => p.branchId === selectedBranch)
+      result = result.filter((p) => String(p.branchId) === String(selectedBranch))
     }
 
     if (selectedPlatform !== 'all') {
@@ -150,7 +152,6 @@ export function AnalyticsProvider({ children }) {
       )
     }
 
-    // Sorting
     result.sort((a, b) => {
       let valA = a[sortBy]
       let valB = b[sortBy]
@@ -170,7 +171,6 @@ export function AnalyticsProvider({ children }) {
     return result
   }, [selectedRestaurant, selectedBranch, selectedPlatform, searchQuery, sortBy, sortOrder])
 
-  // Top 5 Performing Posts
   const topPosts = useMemo(() => {
     return [...filteredPosts].sort((a, b) => b.engagement - a.engagement).slice(0, 5)
   }, [filteredPosts])

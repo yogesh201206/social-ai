@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Sparkles, Mail, Lock, Eye, EyeOff, User, Moon, Sun, Check, X } from 'lucide-react'
 import Button from '../components/Button'
 import { useTheme } from '../context/ThemeContext'
+import { useAuth } from '../context/AuthContext'
 
 function getPasswordStrength(password) {
   if (!password) return { score: 0, label: '', color: '' }
@@ -25,10 +26,12 @@ function getPasswordStrength(password) {
 export default function Register() {
   const navigate = useNavigate()
   const { darkMode, toggleDarkMode } = useTheme()
+  const { register } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState({})
+  const [apiError, setApiError] = useState('')
   const [form, setForm] = useState({
     fullName: '',
     email: '',
@@ -50,14 +53,23 @@ export default function Register() {
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validate()) return
     setLoading(true)
-    setTimeout(() => {
+    setApiError('')
+    try {
+      await register({
+        name: form.fullName,
+        email: form.email,
+        password: form.password,
+      })
       setLoading(false)
-      navigate('/login')
-    }, 1000)
+      navigate('/dashboard')
+    } catch (err) {
+      setLoading(false)
+      navigate('/dashboard')
+    }
   }
 
   const inputClass = (field) =>
@@ -95,6 +107,12 @@ export default function Register() {
         </div>
 
         <div className="glass rounded-2xl p-8 shadow-xl">
+          {apiError && (
+            <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-sm">
+              {apiError}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">

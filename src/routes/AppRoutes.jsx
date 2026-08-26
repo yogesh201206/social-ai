@@ -35,6 +35,13 @@ import EmailMarketing from '../pages/email/EmailMarketing'
 import CreateEmailCampaign from '../pages/email/CreateEmailCampaign'
 import EmailCampaignDetails from '../pages/email/EmailCampaignDetails'
 
+import UsersManagement from '../pages/admin/UsersManagement'
+import UserDetails from '../pages/admin/UserDetails'
+import RestaurantsManagement from '../pages/admin/RestaurantsManagement'
+import AdminRestaurantDetails from '../pages/admin/RestaurantDetails'
+import AdminReports from '../pages/admin/AdminReports'
+import AdminSettings from '../pages/admin/AdminSettings'
+
 function PlaceholderPage({ title, description }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
@@ -93,10 +100,12 @@ export default function AppRoutes() {
 
       <Route element={<DashboardLayout links={adminSidebarLinks} />}>
         <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/admin/users" element={<PlaceholderPage title="Users Management" />} />
-        <Route path="/admin/restaurants" element={<PlaceholderPage title="Restaurants Management" />} />
-        <Route path="/admin/reports" element={<PlaceholderPage title="Reports" />} />
-        <Route path="/admin/settings" element={<PlaceholderPage title="Admin Settings" />} />
+        <Route path="/admin/users" element={<UsersManagement />} />
+        <Route path="/admin/users/:id" element={<UserDetails />} />
+        <Route path="/admin/restaurants" element={<RestaurantsManagement />} />
+        <Route path="/admin/restaurants/:id" element={<AdminRestaurantDetails />} />
+        <Route path="/admin/reports" element={<AdminReports />} />
+        <Route path="/admin/settings" element={<AdminSettings />} />
       </Route>
     </Routes>
   )

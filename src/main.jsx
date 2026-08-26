@@ -9,6 +9,7 @@ import { AIProvider } from './context/AIContext'
 import { SchedulerProvider } from './context/SchedulerContext'
 import { AnalyticsProvider } from './context/AnalyticsContext'
 import { EmailMarketingProvider } from './context/EmailMarketingContext'
+import { AdminProvider } from './context/AdminContext'
 import App from './App'
 import './index.css'
 
@@ -23,7 +24,9 @@ createRoot(document.getElementById('root')).render(
                 <SchedulerProvider>
                   <AnalyticsProvider>
                     <EmailMarketingProvider>
-                      <App />
+                      <AdminProvider>
+                        <App />
+                      </AdminProvider>
                     </EmailMarketingProvider>
                   </AnalyticsProvider>
                 </SchedulerProvider>

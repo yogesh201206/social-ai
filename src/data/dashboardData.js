@@ -95,6 +95,11 @@ export const routeTitles = {
   '/dashboard/analytics/posts': 'Post Analytics',
   '/dashboard/settings': 'Settings',
   '/dashboard/profile': 'My Profile',
+  '/admin': 'Admin Dashboard',
+  '/admin/users': 'User Management',
+  '/admin/restaurants': 'Restaurant Management',
+  '/admin/reports': 'Admin Reports',
+  '/admin/settings': 'Admin Settings',
 }
 
 export const quickActions = [

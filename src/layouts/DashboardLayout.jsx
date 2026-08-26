@@ -8,6 +8,8 @@ import { routeTitles } from '../data/dashboardData'
 function getPageTitle(pathname) {
   if (routeTitles[pathname]) return routeTitles[pathname]
 
+  if (pathname.match(/\/admin\/users\/[^/]+$/)) return 'User Details'
+  if (pathname.match(/\/admin\/restaurants\/[^/]+$/)) return 'Restaurant Details'
   if (pathname.match(/\/dashboard\/restaurants\/[^/]+$/)) return 'Restaurant Details'
   if (pathname.match(/\/dashboard\/restaurants\/[^/]+\/edit$/)) return 'Edit Restaurant'
   if (pathname.match(/\/dashboard\/posts\/[^/]+\/edit$/)) return 'Edit Post'

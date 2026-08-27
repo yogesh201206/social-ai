@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
 import { useRestaurants } from '../../context/RestaurantContext'
 import { restaurantCategories } from '../../data/dashboardData'
 import Button from '../../components/Button'
@@ -24,6 +24,7 @@ export default function EditRestaurant() {
   })
 
   const [saving, setSaving] = useState(false)
+  const [branches, setBranches] = useState([])
 
   useEffect(() => {
     if (restaurant) {
@@ -34,7 +35,9 @@ export default function EditRestaurant() {
         phone: restaurant.phone || '',
         email: restaurant.email || '',
         address: restaurant.address || restaurant.location || '',
-      })
+    })
+
+      setBranches(restaurant.branches || [])
     }
   }, [restaurant])
 
@@ -61,6 +64,41 @@ export default function EditRestaurant() {
       setSaving(false)
     }
   }
+
+  const updateBranch = (index, field, value) => {
+  setBranches((prev) =>
+    prev.map((branch, i) =>
+      i === index
+        ? { ...branch, [field]: value }
+        : branch
+    )
+  )
+}
+
+const addBranch = () => {
+  setBranches((prev) => [
+    ...prev,
+    {
+      name: '',
+      city: '',
+      address: '',
+    },
+  ])
+}
+
+const removeBranch = async (index) => {
+  const branch = branches[index]
+
+  if (branch.id) {
+    // Existing branch
+    // Backend delete can be added here
+    console.log('Branch to delete:', branch.id)
+  }
+
+  setBranches((prev) =>
+    prev.filter((_, i) => i !== index)
+  )
+}
 
   if (!restaurant) {
     return (
@@ -211,6 +249,101 @@ export default function EditRestaurant() {
           </div>
 
         </Card>
+
+        <Card className="p-6 sm:p-8 mt-6 space-y-6">
+
+  <div className="flex items-center justify-between">
+    <div>
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+        Branches
+      </h3>
+
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+        Manage your restaurant branches.
+      </p>
+    </div>
+
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={addBranch}
+    >
+      <Plus className="h-4 w-4" />
+      Add Branch
+    </Button>
+  </div>
+
+  <div className="space-y-4">
+
+    {branches.length === 0 && (
+      <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+        No branches added yet.
+      </div>
+    )}
+
+    {branches.map((branch, index) => (
+      <div
+        key={branch.id || index}
+        className="p-4 rounded-xl border border-gray-200 dark:border-gray-600 space-y-3"
+      >
+
+        <div className="flex items-center justify-between">
+
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Branch {index + 1}
+          </span>
+
+          <button
+            type="button"
+            onClick={() => removeBranch(index)}
+            className="p-1 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+
+          <input
+            type="text"
+            value={branch.name || ''}
+            onChange={(e) =>
+              updateBranch(index, 'name', e.target.value)
+            }
+            className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+            placeholder="Branch name"
+          />
+
+          <input
+            type="text"
+            value={branch.city || ''}
+            onChange={(e) =>
+              updateBranch(index, 'city', e.target.value)
+            }
+            className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+            placeholder="City"
+          />
+
+        </div>
+
+        <input
+          type="text"
+          value={branch.address || ''}
+          onChange={(e) =>
+            updateBranch(index, 'address', e.target.value)
+          }
+          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+          placeholder="Full address"
+        />
+
+      </div>
+    ))}
+
+  </div>
+
+</Card>
 
         {/* Buttons */}
         <div className="flex items-center gap-3 mt-6">

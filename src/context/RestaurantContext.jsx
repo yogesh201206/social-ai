@@ -133,6 +133,33 @@ const addBranch = useCallback(async (restaurantId, branch) => {
     phone: branch.phone || '',
   })
 
+
+  const updateBranch = useCallback(async (branchId, data) => {
+  const res = await restaurantService.updateBranch(branchId, {
+    branchName: data.name,
+    city: data.city,
+    address: data.address,
+    phone: data.phone || '',
+  })
+
+  setRestaurants((prev) =>
+    prev.map((restaurant) => ({
+      ...restaurant,
+      branches: (restaurant.branches || []).map((branch) =>
+        String(branch.id) === String(branchId)
+          ? {
+              ...branch,
+              ...res,
+              name: res.branchName || res.name || data.name,
+            }
+          : branch
+      ),
+    }))
+  )
+
+  return res
+}, [])
+
   const newBranch = {
     id: String(res.id),
     name: res.branchName || res.name || branchName,
@@ -172,7 +199,7 @@ const addBranch = useCallback(async (restaurantId, branch) => {
 
   return (
     <RestaurantContext.Provider value={{ restaurants, loading, addRestaurant,updateRestaurant,addBranch,
-            deleteRestaurant, getRestaurant }}>
+            updateBranch,deleteRestaurant, getRestaurant }}>
       {children}
     </RestaurantContext.Provider>
   )

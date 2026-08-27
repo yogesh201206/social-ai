@@ -10,7 +10,12 @@ export default function EditRestaurant() {
   const { id } = useParams()
   const navigate = useNavigate()
 
-  const { getRestaurant, updateRestaurant ,addBranch} = useRestaurants()
+  const {
+  getRestaurant,
+  updateRestaurant,
+  addBranch,
+  updateBranch: saveBranchUpdate
+} = useRestaurants()
 
   const restaurant = getRestaurant(id)
 
@@ -82,37 +87,34 @@ export default function EditRestaurant() {
     }
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+const handleSubmit = async (e) => {
+  e.preventDefault()
 
-    try {
-      setSaving(true)
-      setBranchError(null)
+  try {
+    setSaving(true)
 
-      // Automatically save any unsaved draft branches that have a name provided
-      for (let i = 0; i < branches.length; i++) {
-        const b = branches[i]
-        const bName = b.name || b.branchName || ''
-        if (b.isNew && bName.trim()) {
-          await addBranch(id, {
-            name: bName,
-            city: b.city || '',
-            address: b.address || '',
-            phone: b.phone || '',
-          })
-        }
+    // Restaurant details update
+    await updateRestaurant(id, form)
+
+    // Branches update/create
+    for (const branch of branches) {
+
+      if (String(branch.id || '').startsWith('new-')) {
+        await addBranch(id, branch)
+      } else if (branch.id) {
+        await saveBranchUpdate(branch.id, branch)
       }
 
-      await updateRestaurant(id, form)
-
-      navigate(`/dashboard/restaurants/${id}`)
-    } catch (error) {
-      console.error('Failed to update restaurant:', error)
-      alert('Failed to update restaurant: ' + (error.message || 'API error'))
-    } finally {
-      setSaving(false)
     }
+
+    navigate(`/dashboard/restaurants/${id}`)
+  } catch (error) {
+    console.error('Failed to update restaurant/branches:', error)
+    alert('Failed to save changes')
+  } finally {
+    setSaving(false)
   }
+}
 
   const handleAddBranch = () => {
     setBranchError(null)

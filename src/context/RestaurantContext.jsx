@@ -21,8 +21,16 @@ export function RestaurantProvider({ children }) {
             phone: r.phone || '',
             email: r.email || '',
             status: r.status || 'Active',
-            branchCount: r.branches ? r.branches.length : 1,
-            branches: r.branches || [],
+            branchCount: r.branches ? r.branches.length : 0,
+            branches: r.branches ? r.branches.map(b => ({
+              id: String(b.id),
+              name: b.branchName || b.name || '',
+              branchName: b.branchName || b.name || '',
+              city: b.city || '',
+              address: b.address || '',
+              phone: b.phone || '',
+              status: b.status || 'ACTIVE'
+            })) : [],
             createdAt: r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
           }))
           setRestaurants(formatted)
@@ -71,6 +79,17 @@ export function RestaurantProvider({ children }) {
   try {
     const res = await restaurantService.update(id, data)
 
+    const rawBranches = res.branches || []
+    const formattedBranches = rawBranches.map(b => ({
+      id: String(b.id),
+      name: b.branchName || b.name || '',
+      branchName: b.branchName || b.name || '',
+      city: b.city || '',
+      address: b.address || '',
+      phone: b.phone || '',
+      status: b.status || 'ACTIVE'
+    }))
+
     const updatedRestaurant = {
       id: String(res.id),
       name: res.name,
@@ -81,8 +100,8 @@ export function RestaurantProvider({ children }) {
       email: res.email || '',
       description: res.description || '',
       status: res.status || 'Active',
-      branchCount: res.branches ? res.branches.length : 1,
-      branches: res.branches || [],
+      branchCount: formattedBranches.length,
+      branches: formattedBranches,
       createdAt: res.createdAt
         ? new Date(res.createdAt).toLocaleDateString('en-US', {
             month: 'short',
@@ -106,26 +125,37 @@ export function RestaurantProvider({ children }) {
 }, [])
 
 const addBranch = useCallback(async (restaurantId, branch) => {
+  const branchName = branch.branchName || branch.name || ''
   const res = await restaurantService.addBranch(restaurantId, {
-    branchName: branch.name,
-    city: branch.city,
-    address: branch.address,
+    branchName: branchName,
+    city: branch.city || '',
+    address: branch.address || '',
     phone: branch.phone || '',
   })
+
+  const newBranch = {
+    id: String(res.id),
+    name: res.branchName || res.name || branchName,
+    branchName: res.branchName || res.name || branchName,
+    city: res.city || branch.city || '',
+    address: res.address || branch.address || '',
+    phone: res.phone || branch.phone || '',
+    status: res.status || 'ACTIVE',
+  }
 
   setRestaurants((prev) =>
     prev.map((restaurant) =>
       String(restaurant.id) === String(restaurantId)
         ? {
             ...restaurant,
-            branches: [...(restaurant.branches || []), res],
+            branches: [...(restaurant.branches || []), newBranch],
             branchCount: (restaurant.branches?.length || 0) + 1,
           }
         : restaurant
     )
   )
 
-  return res
+  return newBranch
 }, [])
 
   const deleteRestaurant = useCallback(async (id) => {

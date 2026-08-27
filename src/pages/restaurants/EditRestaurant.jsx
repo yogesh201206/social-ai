@@ -25,6 +25,8 @@ export default function EditRestaurant() {
 
   const [saving, setSaving] = useState(false)
   const [branches, setBranches] = useState([])
+  const [savingBranchIndex, setSavingBranchIndex] = useState(null)
+  const [branchError, setBranchError] = useState(null)
 
   useEffect(() => {
     if (restaurant) {
@@ -35,7 +37,7 @@ export default function EditRestaurant() {
         phone: restaurant.phone || '',
         email: restaurant.email || '',
         address: restaurant.address || restaurant.location || '',
-    })
+      })
 
       setBranches(restaurant.branches || [])
     }
@@ -48,46 +50,107 @@ export default function EditRestaurant() {
     }))
   }
 
+  const handleSaveBranch = async (index) => {
+    const branchToSave = branches[index]
+    const bName = branchToSave.name || branchToSave.branchName || ''
+    if (!bName.trim()) {
+      alert('Branch Name is required')
+      return
+    }
+
+    try {
+      setSavingBranchIndex(index)
+      setBranchError(null)
+
+      const savedBranch = await addBranch(id, {
+        name: bName,
+        city: branchToSave.city || '',
+        address: branchToSave.address || '',
+        phone: branchToSave.phone || '',
+      })
+
+      setBranches((prev) =>
+        prev.map((item, i) => (i === index ? savedBranch : item))
+      )
+    } catch (err) {
+      console.error('Failed to save branch:', err)
+      const errMsg = err.message || 'Failed to save branch to backend'
+      setBranchError(errMsg)
+      alert(`Failed to save branch: ${errMsg}`)
+    } finally {
+      setSavingBranchIndex(null)
+    }
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
 
     try {
       setSaving(true)
+      setBranchError(null)
+
+      // Automatically save any unsaved draft branches that have a name provided
+      for (let i = 0; i < branches.length; i++) {
+        const b = branches[i]
+        const bName = b.name || b.branchName || ''
+        if (b.isNew && bName.trim()) {
+          await addBranch(id, {
+            name: bName,
+            city: b.city || '',
+            address: b.address || '',
+            phone: b.phone || '',
+          })
+        }
+      }
 
       await updateRestaurant(id, form)
 
       navigate(`/dashboard/restaurants/${id}`)
     } catch (error) {
       console.error('Failed to update restaurant:', error)
-      alert('Failed to update restaurant')
+      alert('Failed to update restaurant: ' + (error.message || 'API error'))
     } finally {
       setSaving(false)
     }
   }
 
-  const updateBranch = (index, field, value) => {
-  setBranches((prev) =>
-    prev.map((branch, i) =>
-      i === index
-        ? { ...branch, [field]: value }
-        : branch
-    )
-  )
-}
-
-const removeBranch = async (index) => {
-  const branch = branches[index]
-
-  if (branch.id) {
-    // Existing branch
-    // Backend delete can be added here
-    console.log('Branch to delete:', branch.id)
+  const handleAddBranch = () => {
+    setBranchError(null)
+    setBranches((prev) => [
+      ...prev,
+      {
+        id: null,
+        name: '',
+        branchName: '',
+        city: '',
+        address: '',
+        phone: '',
+        isNew: true,
+      },
+    ])
   }
 
-  setBranches((prev) =>
-    prev.filter((_, i) => i !== index)
-  )
-}
+  const updateBranch = (index, field, value) => {
+    setBranches((prev) =>
+      prev.map((branch, i) =>
+        i === index
+          ? { ...branch, [field]: value }
+          : branch
+      )
+    )
+  }
+
+  const removeBranch = async (index) => {
+    const branch = branches[index]
+
+    if (branch.id && !branch.isNew) {
+      console.log('Branch to delete:', branch.id)
+    }
+
+    setBranches((prev) =>
+      prev.filter((_, i) => i !== index)
+    )
+  }
 
   if (!restaurant) {
     return (
@@ -256,12 +319,18 @@ const removeBranch = async (index) => {
       type="button"
       variant="outline"
       size="sm"
-      onClick={addBranch}
+      onClick={handleAddBranch}
     >
       <Plus className="h-4 w-4" />
       Add Branch
     </Button>
   </div>
+
+  {branchError && (
+    <div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-sm text-red-600 dark:text-red-400">
+      {branchError}
+    </div>
+  )}
 
   <div className="space-y-4">
 
@@ -273,14 +342,27 @@ const removeBranch = async (index) => {
 
     {branches.map((branch, index) => (
       <div
-        key={branch.id || index}
-        className="p-4 rounded-xl border border-gray-200 dark:border-gray-600 space-y-3"
+        key={branch.id || `draft-${index}`}
+        className={`p-4 rounded-xl border space-y-3 ${
+          branch.isNew
+            ? 'border-brand-300 dark:border-brand-600 bg-brand-50/20 dark:bg-brand-900/10'
+            : 'border-gray-200 dark:border-gray-600'
+        }`}
       >
 
         <div className="flex items-center justify-between">
 
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
             Branch {index + 1}
+            {branch.isNew ? (
+              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                Unsaved Draft
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                Saved (ID: {branch.id})
+              </span>
+            )}
           </span>
 
           <button
@@ -295,37 +377,85 @@ const removeBranch = async (index) => {
 
         <div className="grid sm:grid-cols-2 gap-3">
 
-          <input
-            type="text"
-            value={branch.name || ''}
-            onChange={(e) =>
-              updateBranch(index, 'name', e.target.value)
-            }
-            className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
-            placeholder="Branch name"
-          />
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              Branch Name *
+            </label>
+            <input
+              type="text"
+              value={branch.name || branch.branchName || ''}
+              onChange={(e) => {
+                updateBranch(index, 'name', e.target.value)
+                updateBranch(index, 'branchName', e.target.value)
+              }}
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+              placeholder="Branch Name"
+            />
+          </div>
 
-          <input
-            type="text"
-            value={branch.city || ''}
-            onChange={(e) =>
-              updateBranch(index, 'city', e.target.value)
-            }
-            className="px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
-            placeholder="City"
-          />
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              City
+            </label>
+            <input
+              type="text"
+              value={branch.city || ''}
+              onChange={(e) =>
+                updateBranch(index, 'city', e.target.value)
+              }
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+              placeholder="City"
+            />
+          </div>
 
         </div>
 
-        <input
-          type="text"
-          value={branch.address || ''}
-          onChange={(e) =>
-            updateBranch(index, 'address', e.target.value)
-          }
-          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
-          placeholder="Full address"
-        />
+        <div className="grid sm:grid-cols-2 gap-3">
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              Address
+            </label>
+            <input
+              type="text"
+              value={branch.address || ''}
+              onChange={(e) =>
+                updateBranch(index, 'address', e.target.value)
+              }
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+              placeholder="Full address"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              Phone
+            </label>
+            <input
+              type="text"
+              value={branch.phone || ''}
+              onChange={(e) =>
+                updateBranch(index, 'phone', e.target.value)
+              }
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+              placeholder="Phone number"
+            />
+          </div>
+
+        </div>
+
+        {branch.isNew && (
+          <div className="flex justify-end pt-2">
+            <Button
+              type="button"
+              size="sm"
+              loading={savingBranchIndex === index}
+              onClick={() => handleSaveBranch(index)}
+            >
+              Save Branch
+            </Button>
+          </div>
+        )}
 
       </div>
     ))}

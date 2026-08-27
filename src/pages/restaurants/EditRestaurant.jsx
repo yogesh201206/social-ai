@@ -10,7 +10,7 @@ export default function EditRestaurant() {
   const { id } = useParams()
   const navigate = useNavigate()
 
-  const { getRestaurant, updateRestaurant } = useRestaurants()
+  const { getRestaurant, updateRestaurant ,addBranch} = useRestaurants()
 
   const restaurant = getRestaurant(id)
 
@@ -73,17 +73,6 @@ export default function EditRestaurant() {
         : branch
     )
   )
-}
-
-const addBranch = () => {
-  setBranches((prev) => [
-    ...prev,
-    {
-      name: '',
-      city: '',
-      address: '',
-    },
-  ])
 }
 
 const removeBranch = async (index) => {

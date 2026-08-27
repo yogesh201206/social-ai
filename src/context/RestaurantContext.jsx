@@ -105,6 +105,29 @@ export function RestaurantProvider({ children }) {
   }
 }, [])
 
+const addBranch = useCallback(async (restaurantId, branch) => {
+  const res = await restaurantService.addBranch(restaurantId, {
+    branchName: branch.name,
+    city: branch.city,
+    address: branch.address,
+    phone: branch.phone || '',
+  })
+
+  setRestaurants((prev) =>
+    prev.map((restaurant) =>
+      String(restaurant.id) === String(restaurantId)
+        ? {
+            ...restaurant,
+            branches: [...(restaurant.branches || []), res],
+            branchCount: (restaurant.branches?.length || 0) + 1,
+          }
+        : restaurant
+    )
+  )
+
+  return res
+}, [])
+
   const deleteRestaurant = useCallback(async (id) => {
     try {
       await restaurantService.delete(id)
@@ -118,7 +141,7 @@ export function RestaurantProvider({ children }) {
   )
 
   return (
-    <RestaurantContext.Provider value={{ restaurants, loading, addRestaurant,updateRestaurant,
+    <RestaurantContext.Provider value={{ restaurants, loading, addRestaurant,updateRestaurant,addBranch,
             deleteRestaurant, getRestaurant }}>
       {children}
     </RestaurantContext.Provider>

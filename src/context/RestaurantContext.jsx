@@ -134,25 +134,25 @@ const addBranch = useCallback(async (restaurantId, branch) => {
   })
 
 
-  const updateBranch = useCallback(async (branchId, data) => {
+const updateBranch = useCallback(async (branchId, branch) => {
   const res = await restaurantService.updateBranch(branchId, {
-    branchName: data.name,
-    city: data.city,
-    address: data.address,
-    phone: data.phone || '',
+    branchName: branch.name,
+    city: branch.city,
+    address: branch.address,
+    phone: branch.phone || '',
   })
 
   setRestaurants((prev) =>
     prev.map((restaurant) => ({
       ...restaurant,
-      branches: (restaurant.branches || []).map((branch) =>
-        String(branch.id) === String(branchId)
+      branches: (restaurant.branches || []).map((b) =>
+        String(b.id) === String(branchId)
           ? {
-              ...branch,
+              ...b,
               ...res,
-              name: res.branchName || res.name || data.name,
+              name: res.branchName || res.name || branch.name,
             }
-          : branch
+          : b
       ),
     }))
   )
@@ -198,10 +198,20 @@ const addBranch = useCallback(async (restaurantId, branch) => {
   )
 
   return (
-    <RestaurantContext.Provider value={{ restaurants, loading, addRestaurant,updateRestaurant,addBranch,
-            updateBranch,deleteRestaurant, getRestaurant }}>
-      {children}
-    </RestaurantContext.Provider>
+<RestaurantContext.Provider
+  value={{
+    restaurants,
+    loading,
+    addRestaurant,
+    updateRestaurant,
+    addBranch,
+    updateBranch,
+    deleteRestaurant,
+    getRestaurant,
+  }}
+>
+  {children}
+</RestaurantContext.Provider>
   )
 }
 

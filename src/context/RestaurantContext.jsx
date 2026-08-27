@@ -67,6 +67,44 @@ export function RestaurantProvider({ children }) {
     }
   }, [])
 
+  const updateRestaurant = useCallback(async (id, data) => {
+  try {
+    const res = await restaurantService.update(id, data)
+
+    const updatedRestaurant = {
+      id: String(res.id),
+      name: res.name,
+      category: res.category || 'Restaurant',
+      location: res.address || 'Downtown',
+      address: res.address || '',
+      phone: res.phone || '',
+      email: res.email || '',
+      description: res.description || '',
+      status: res.status || 'Active',
+      branchCount: res.branches ? res.branches.length : 1,
+      branches: res.branches || [],
+      createdAt: res.createdAt
+        ? new Date(res.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          })
+        : 'Recently',
+    }
+
+    setRestaurants((prev) =>
+      prev.map((r) =>
+        String(r.id) === String(id) ? updatedRestaurant : r
+      )
+    )
+
+    return updatedRestaurant
+  } catch (error) {
+    console.error('Update restaurant failed:', error)
+    throw error
+  }
+}, [])
+
   const deleteRestaurant = useCallback(async (id) => {
     try {
       await restaurantService.delete(id)
@@ -80,7 +118,8 @@ export function RestaurantProvider({ children }) {
   )
 
   return (
-    <RestaurantContext.Provider value={{ restaurants, loading, addRestaurant, deleteRestaurant, getRestaurant }}>
+    <RestaurantContext.Provider value={{ restaurants, loading, addRestaurant,updateRestaurant,
+            deleteRestaurant, getRestaurant }}>
       {children}
     </RestaurantContext.Provider>
   )

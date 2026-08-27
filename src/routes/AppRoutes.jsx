@@ -41,6 +41,7 @@ import RestaurantsManagement from '../pages/admin/RestaurantsManagement'
 import AdminRestaurantDetails from '../pages/admin/RestaurantDetails'
 import AdminReports from '../pages/admin/AdminReports'
 import AdminSettings from '../pages/admin/AdminSettings'
+import EditRestaurant from '../pages/restaurants/EditRestaurant'
 
 function PlaceholderPage({ title, description }) {
   return (
@@ -70,7 +71,7 @@ export default function AppRoutes() {
         <Route path="/dashboard/restaurants" element={<RestaurantList />} />
         <Route path="/dashboard/restaurants/add" element={<AddRestaurant />} />
         <Route path="/dashboard/restaurants/:id" element={<RestaurantDetails />} />
-        <Route path="/dashboard/restaurants/:id/edit" element={<PlaceholderPage title="Edit Restaurant" description="Restaurant editing will be available in the next update." />} />
+        <Route path="/dashboard/restaurants/:id/edit" element={<EditRestaurant />}/>
         <Route path="/dashboard/posts" element={<AllPosts />} />
         <Route path="/dashboard/posts/create" element={<CreatePost />} />
         <Route path="/dashboard/posts/drafts" element={<DraftPosts />} />

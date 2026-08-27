@@ -15,6 +15,7 @@ const {
   updateRestaurant,
   addBranch,
   updateBranch: saveBranchUpdate,
+  deleteBranch,
 } = useRestaurants()
 
   const restaurant = getRestaurant(id)
@@ -138,17 +139,22 @@ const handleSubmit = async (e) => {
     )
   }
 
-  const removeBranch = async (index) => {
-    const branch = branches[index]
+const removeBranch = async (index) => {
+  const branch = branches[index]
 
-    if (branch.id && !branch.isNew) {
-      console.log('Branch to delete:', branch.id)
+  try {
+    if (branch.id && !String(branch.id).startsWith('new-')) {
+      await deleteBranch(branch.id)
     }
 
     setBranches((prev) =>
       prev.filter((_, i) => i !== index)
     )
+  } catch (error) {
+    console.error('Failed to delete branch:', error)
+    alert('Failed to delete branch')
   }
+}
 
   if (!restaurant) {
     return (

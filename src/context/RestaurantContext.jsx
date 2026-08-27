@@ -191,6 +191,24 @@ const updateBranch = useCallback(async (branchId, branch) => {
   return updatedBranch
 }, [])
 
+const deleteBranch = useCallback(async (branchId) => {
+  await restaurantService.deleteBranch(branchId)
+
+  setRestaurants((prev) =>
+    prev.map((restaurant) => {
+      const remainingBranches = (restaurant.branches || []).filter(
+        (branch) => String(branch.id) !== String(branchId)
+      )
+
+      return {
+        ...restaurant,
+        branches: remainingBranches,
+        branchCount: remainingBranches.length,
+      }
+    })
+  )
+}, [])
+
   const deleteRestaurant = useCallback(async (id) => {
     try {
       await restaurantService.delete(id)
@@ -212,6 +230,7 @@ const updateBranch = useCallback(async (branchId, branch) => {
     updateRestaurant,
     addBranch,
     updateBranch,
+    deleteBranch,
     deleteRestaurant,
     getRestaurant,
   }}

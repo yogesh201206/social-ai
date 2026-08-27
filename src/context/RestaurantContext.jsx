@@ -209,12 +209,20 @@ const deleteBranch = useCallback(async (branchId) => {
   )
 }, [])
 
-  const deleteRestaurant = useCallback(async (id) => {
-    try {
-      await restaurantService.delete(id)
-    } catch (e) {}
-    setRestaurants((prev) => prev.filter((r) => String(r.id) !== String(id)))
-  }, [])
+const deleteRestaurant = useCallback(async (id) => {
+  try {
+    await restaurantService.delete(id)
+
+    setRestaurants((prev) =>
+      prev.filter((r) => String(r.id) !== String(id))
+    )
+
+    return true
+  } catch (error) {
+    console.error('Delete restaurant failed:', error)
+    throw error
+  }
+}, [])
 
   const getRestaurant = useCallback(
     (id) => restaurants.find((r) => String(r.id) === String(id)),

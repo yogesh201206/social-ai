@@ -126,39 +126,13 @@ export function RestaurantProvider({ children }) {
 
 const addBranch = useCallback(async (restaurantId, branch) => {
   const branchName = branch.branchName || branch.name || ''
+
   const res = await restaurantService.addBranch(restaurantId, {
-    branchName: branchName,
+    branchName,
     city: branch.city || '',
     address: branch.address || '',
     phone: branch.phone || '',
   })
-
-
-const updateBranch = useCallback(async (branchId, branch) => {
-  const res = await restaurantService.updateBranch(branchId, {
-    branchName: branch.name,
-    city: branch.city,
-    address: branch.address,
-    phone: branch.phone || '',
-  })
-
-  setRestaurants((prev) =>
-    prev.map((restaurant) => ({
-      ...restaurant,
-      branches: (restaurant.branches || []).map((b) =>
-        String(b.id) === String(branchId)
-          ? {
-              ...b,
-              ...res,
-              name: res.branchName || res.name || branch.name,
-            }
-          : b
-      ),
-    }))
-  )
-
-  return res
-}, [])
 
   const newBranch = {
     id: String(res.id),
@@ -183,6 +157,38 @@ const updateBranch = useCallback(async (branchId, branch) => {
   )
 
   return newBranch
+}, [])
+
+const updateBranch = useCallback(async (branchId, branch) => {
+  const res = await restaurantService.updateBranch(branchId, {
+    branchName: branch.branchName || branch.name || '',
+    city: branch.city || '',
+    address: branch.address || '',
+    phone: branch.phone || '',
+  })
+
+  const updatedBranch = {
+    id: String(res.id || branchId),
+    name: res.branchName || res.name || branch.name || '',
+    branchName: res.branchName || res.name || branch.name || '',
+    city: res.city || branch.city || '',
+    address: res.address || branch.address || '',
+    phone: res.phone || branch.phone || '',
+    status: res.status || branch.status || 'ACTIVE',
+  }
+
+  setRestaurants((prev) =>
+    prev.map((restaurant) => ({
+      ...restaurant,
+      branches: (restaurant.branches || []).map((b) =>
+        String(b.id) === String(branchId)
+          ? updatedBranch
+          : b
+      ),
+    }))
+  )
+
+  return updatedBranch
 }, [])
 
   const deleteRestaurant = useCallback(async (id) => {

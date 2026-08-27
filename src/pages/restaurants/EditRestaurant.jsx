@@ -10,11 +10,11 @@ export default function EditRestaurant() {
   const { id } = useParams()
   const navigate = useNavigate()
 
-  const {
+const {
   getRestaurant,
   updateRestaurant,
   addBranch,
-  updateBranch: saveBranchUpdate
+  updateBranch: saveBranchUpdate,
 } = useRestaurants()
 
   const restaurant = getRestaurant(id)
@@ -93,23 +93,19 @@ const handleSubmit = async (e) => {
   try {
     setSaving(true)
 
-    // Restaurant details update
     await updateRestaurant(id, form)
 
-    // Branches update/create
     for (const branch of branches) {
-
       if (String(branch.id || '').startsWith('new-')) {
         await addBranch(id, branch)
       } else if (branch.id) {
         await saveBranchUpdate(branch.id, branch)
       }
-
     }
 
     navigate(`/dashboard/restaurants/${id}`)
   } catch (error) {
-    console.error('Failed to update restaurant/branches:', error)
+    console.error('Failed to save restaurant/branches:', error)
     alert('Failed to save changes')
   } finally {
     setSaving(false)

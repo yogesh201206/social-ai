@@ -63,7 +63,11 @@ public class EmailCampaignServiceImpl implements EmailCampaignService {
 
         Branch branch = null;
         if (request.getBranchId() != null) {
-            branch = branchRepository.findById(request.getBranchId()).orElse(null);
+            branch = branchRepository.findById(request.getBranchId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Branch not found with id: " + request.getBranchId()));
+            if (!branch.getRestaurant().getId().equals(restaurant.getId())) {
+                throw new com.socialflow.exception.BadRequestException("Branch does not belong to the selected restaurant");
+            }
         }
 
         EmailCampaign campaign = EmailCampaign.builder()
@@ -92,6 +96,24 @@ public class EmailCampaignServiceImpl implements EmailCampaignService {
 
         if (!isAdmin && !campaign.getRestaurant().getOwner().getEmail().equalsIgnoreCase(currentUserEmail)) {
             throw new UnauthorizedException("Not authorized");
+        }
+
+        if (request.getRestaurantId() != null && !request.getRestaurantId().equals(campaign.getRestaurant().getId())) {
+            Restaurant newRestaurant = restaurantRepository.findById(request.getRestaurantId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Restaurant not found with id: " + request.getRestaurantId()));
+            if (!isAdmin && !newRestaurant.getOwner().getEmail().equalsIgnoreCase(currentUserEmail)) {
+                throw new UnauthorizedException("Not authorized to transfer campaign to another owner's restaurant");
+            }
+            campaign.setRestaurant(newRestaurant);
+        }
+
+        if (request.getBranchId() != null) {
+            Branch branch = branchRepository.findById(request.getBranchId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Branch not found with id: " + request.getBranchId()));
+            if (!branch.getRestaurant().getId().equals(campaign.getRestaurant().getId())) {
+                throw new com.socialflow.exception.BadRequestException("Branch does not belong to the campaign restaurant");
+            }
+            campaign.setBranch(branch);
         }
 
         if (request.getCampaignName() != null) campaign.setCampaignName(request.getCampaignName());

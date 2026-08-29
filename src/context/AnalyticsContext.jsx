@@ -88,22 +88,22 @@ export function AnalyticsProvider({ children }) {
   }, [selectedDateRange, filterMultiplier, selectedPlatform])
 
   const overviewStats = useMemo(() => {
-    const baseReach = apiOverview?.totalReach || initialOverviewStats.totalReach.raw
-    const baseImp = apiOverview?.totalImpressions || initialOverviewStats.impressions.raw
-    const baseLikes = apiOverview?.totalLikes || 24600
-    const baseComm = apiOverview?.totalComments || 3820
-    const baseShares = apiOverview?.totalShares || 1940
+    const baseReach = apiOverview ? (apiOverview.totalReach ?? 0) : 0
+    const baseImp = apiOverview ? (apiOverview.totalImpressions ?? 0) : 0
+    const baseLikes = apiOverview ? (apiOverview.totalLikes ?? 0) : 0
+    const baseComm = apiOverview ? (apiOverview.totalComments ?? 0) : 0
+    const baseShares = apiOverview ? (apiOverview.totalShares ?? 0) : 0
     const baseEng = baseLikes + baseComm + baseShares
-    const baseFol = apiOverview?.totalFollowers || initialOverviewStats.followers.raw
-    const basePosts = apiOverview?.totalPosts || initialOverviewStats.postsPublished.raw
+    const baseFol = apiOverview ? (apiOverview.totalFollowers ?? 0) : 0
+    const basePosts = apiOverview ? (apiOverview.totalPosts ?? 0) : 0
 
     const rawReach = Math.round(baseReach * filterMultiplier)
     const rawImp = Math.round(baseImp * filterMultiplier)
     const rawEng = Math.round(baseEng * filterMultiplier)
     const rawFol = Math.round(baseFol * (filterMultiplier > 0.5 ? filterMultiplier : filterMultiplier * 1.8))
-    const rawPosts = Math.max(1, Math.round(basePosts * filterMultiplier))
+    const rawPosts = Math.round(basePosts * filterMultiplier)
 
-    const formatK = (val) => (val >= 1000 ? `${(val / 1000).toFixed(1)}K` : String(val))
+    const formatK = (val) => (val >= 1000 ? `${(val / 1000).toFixed(1)}K` : String(val || 0))
 
     return {
       totalReach: { ...initialOverviewStats.totalReach, value: formatK(rawReach), raw: rawReach },
@@ -113,7 +113,7 @@ export function AnalyticsProvider({ children }) {
       postsPublished: { ...initialOverviewStats.postsPublished, value: String(rawPosts), raw: rawPosts },
       engagementRate: {
         ...initialOverviewStats.engagementRate,
-        value: `${(rawReach > 0 ? ((rawEng / rawReach) * 100).toFixed(1) : 7.6)}%`,
+        value: `${rawReach > 0 ? ((rawEng / rawReach) * 100).toFixed(1) : (apiOverview?.averageEngagementRate ? apiOverview.averageEngagementRate.toFixed(1) : '0.0')}%`,
       },
     }
   }, [filterMultiplier, apiOverview])

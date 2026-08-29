@@ -19,11 +19,17 @@ public class AnalyticsServiceImpl implements AnalyticsService {
 
     private final AnalyticsRepository analyticsRepository;
     private final PostRepository postRepository;
+    private final com.socialflow.repository.RestaurantRepository restaurantRepository;
 
     @Override
     public AnalyticsOverviewDto getOverview(Long restaurantId, Long branchId, String currentUserEmail, boolean isAdmin) {
         List<Analytics> list;
         if (restaurantId != null) {
+            com.socialflow.entity.Restaurant restaurant = restaurantRepository.findById(restaurantId)
+                    .orElseThrow(() -> new com.socialflow.exception.ResourceNotFoundException("Restaurant not found with id: " + restaurantId));
+            if (!isAdmin && !restaurant.getOwner().getEmail().equalsIgnoreCase(currentUserEmail)) {
+                throw new com.socialflow.exception.UnauthorizedException("Not authorized");
+            }
             list = analyticsRepository.findByRestaurantId(restaurantId);
         } else if (!isAdmin) {
             list = analyticsRepository.findByRestaurantOwnerEmail(currentUserEmail);
@@ -58,10 +64,17 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     @Override
     public List<AnalyticsResponse> getPlatformAnalytics(Long restaurantId, Platform platform, String currentUserEmail, boolean isAdmin) {
         List<Analytics> list;
-        if (restaurantId != null && platform != null) {
-            list = analyticsRepository.findByRestaurantIdAndPlatform(restaurantId, platform);
-        } else if (restaurantId != null) {
-            list = analyticsRepository.findByRestaurantId(restaurantId);
+        if (restaurantId != null) {
+            com.socialflow.entity.Restaurant restaurant = restaurantRepository.findById(restaurantId)
+                    .orElseThrow(() -> new com.socialflow.exception.ResourceNotFoundException("Restaurant not found with id: " + restaurantId));
+            if (!isAdmin && !restaurant.getOwner().getEmail().equalsIgnoreCase(currentUserEmail)) {
+                throw new com.socialflow.exception.UnauthorizedException("Not authorized");
+            }
+            if (platform != null) {
+                list = analyticsRepository.findByRestaurantIdAndPlatform(restaurantId, platform);
+            } else {
+                list = analyticsRepository.findByRestaurantId(restaurantId);
+            }
         } else if (!isAdmin) {
             list = analyticsRepository.findByRestaurantOwnerEmail(currentUserEmail);
         } else {

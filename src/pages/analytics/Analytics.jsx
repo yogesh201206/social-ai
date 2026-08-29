@@ -11,7 +11,6 @@ import BarChartComponent from '../../components/analytics/BarChartComponent'
 import PostDetailModal from '../../components/analytics/PostDetailModal'
 import { StatCardSkeleton } from '../../components/Skeleton'
 import { useAnalytics } from '../../context/AnalyticsContext'
-import { platformPerformanceData } from '../../data/analyticsData'
 
 export default function Analytics() {
   const [loading, setLoading] = useState(true)
@@ -205,13 +204,13 @@ export default function Analytics() {
             <div>
               <span className="text-xs text-gray-500 dark:text-gray-400">Net Growth</span>
               <p className="text-base font-bold text-emerald-600 dark:text-emerald-400">
-                +{netGrowth.toLocaleString()}
+                {netGrowth > 0 ? `+${netGrowth.toLocaleString()}` : netGrowth.toLocaleString()}
               </p>
             </div>
             <div>
               <span className="text-xs text-gray-500 dark:text-gray-400">Growth %</span>
               <p className="text-base font-bold text-emerald-600 dark:text-emerald-400">
-                +{growthRatePercent}%
+                {growthRatePercent !== '0.0' && growthRatePercent !== '0' ? `+${growthRatePercent}%` : '0%'}
               </p>
             </div>
           </div>
@@ -254,10 +253,10 @@ export default function Analytics() {
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-gray-800">
             {topPosts.map((post) => {
-              const platInfo = platformPerformanceData.find(
+              const platInfo = platformData.find(
                 (p) => p.platform.toLowerCase() === post.platform.toLowerCase()
               )
-              const IconComponent = platInfo ? Icons[platInfo.icon] : Icons.Share2
+              const IconComponent = platInfo && Icons[platInfo.icon] ? Icons[platInfo.icon] : Icons.Share2
 
               return (
                 <div

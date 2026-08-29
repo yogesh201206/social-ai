@@ -6,11 +6,11 @@ import AnalyticsFilterBar from '../../components/analytics/AnalyticsFilterBar'
 import AnalyticsNavTabs from '../../components/analytics/AnalyticsNavTabs'
 import PostDetailModal from '../../components/analytics/PostDetailModal'
 import { useAnalytics } from '../../context/AnalyticsContext'
-import { platformPerformanceData } from '../../data/analyticsData'
 
 export default function PostAnalytics() {
   const {
     postAnalytics,
+    platformData,
     searchQuery,
     setSearchQuery,
     sortBy,
@@ -119,10 +119,10 @@ export default function PostAnalytics() {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-sm">
                 {postAnalytics.map((post) => {
-                  const platInfo = platformPerformanceData.find(
+                  const platInfo = platformData.find(
                     (p) => p.platform.toLowerCase() === post.platform.toLowerCase()
                   )
-                  const IconComponent = platInfo ? Icons[platInfo.icon] : Icons.Share2
+                  const IconComponent = platInfo && Icons[platInfo.icon] ? Icons[platInfo.icon] : Icons.Share2
 
                   return (
                     <tr

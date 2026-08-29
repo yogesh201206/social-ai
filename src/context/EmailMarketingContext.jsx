@@ -211,14 +211,14 @@ export function EmailMarketingProvider({ children }) {
       }
     })
 
-    const openRate = totalSent > 0 ? ((totalOpened / totalSent) * 100).toFixed(1) + '%' : '68.4%'
-    const clickRate = totalOpened > 0 ? ((totalClicked / totalOpened) * 100).toFixed(1) + '%' : '24.6%'
+    const openRate = totalSent > 0 ? `${((totalOpened / totalSent) * 100).toFixed(1)}%` : '0%'
+    const clickRate = totalOpened > 0 ? `${((totalClicked / totalOpened) * 100).toFixed(1)}%` : '0%'
 
     const formattedSent =
-      totalSent >= 1000 ? `${(totalSent / 1000).toFixed(1)}K` : totalSent > 0 ? totalSent.toString() : '12.8K'
+      totalSent >= 1000 ? `${(totalSent / 1000).toFixed(1)}K` : String(totalSent || 0)
 
     return {
-      totalCampaigns: totalCampaigns || 24,
+      totalCampaigns,
       emailsSent: formattedSent,
       openRate,
       clickRate,

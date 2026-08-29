@@ -6,12 +6,14 @@ import {
   followerGrowthMetrics,
   postAnalyticsList,
 } from '../data/analyticsData'
+import { useAuth } from './AuthContext'
 import { useRestaurants } from './RestaurantContext'
 import analyticsService from '../services/analyticsService'
 
 const AnalyticsContext = createContext()
 
 export function AnalyticsProvider({ children }) {
+  const { token } = useAuth()
   const { restaurants } = useRestaurants()
 
   // Filter state
@@ -25,12 +27,15 @@ export function AnalyticsProvider({ children }) {
   const [apiOverview, setApiOverview] = useState(null)
 
   useEffect(() => {
-    analyticsService.getOverview()
+    const params = {}
+    if (selectedRestaurant !== 'all') params.restaurantId = selectedRestaurant
+    if (selectedBranch !== 'all') params.branchId = selectedBranch
+    analyticsService.getOverview(params)
       .then((data) => {
         if (data) setApiOverview(data)
       })
       .catch((e) => {})
-  }, [selectedRestaurant, selectedBranch])
+  }, [selectedRestaurant, selectedBranch, token])
 
   const handleSetRestaurant = useCallback((restId) => {
     setSelectedRestaurant(restId)

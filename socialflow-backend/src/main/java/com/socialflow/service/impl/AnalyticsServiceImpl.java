@@ -36,19 +36,19 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         int totalLikes = list.stream().mapToInt(a -> a.getLikes() != null ? a.getLikes() : 0).sum();
         int totalComments = list.stream().mapToInt(a -> a.getComments() != null ? a.getComments() : 0).sum();
         int totalShares = list.stream().mapToInt(a -> a.getShares() != null ? a.getShares() : 0).sum();
-        int totalFollowers = list.stream().mapToInt(a -> a.getFollowers() != null ? a.getFollowers() : 0).max().orElse(12400);
+        int totalFollowers = list.stream().mapToInt(a -> a.getFollowers() != null ? a.getFollowers() : 0).max().orElse(0);
 
-        double avgEngagementRate = list.isEmpty() ? 4.8 :
-                list.stream().mapToDouble(a -> a.getEngagementRate() != null ? a.getEngagementRate() : 0.0).average().orElse(4.8);
+        double avgEngagementRate = list.isEmpty() ? 0.0 :
+                list.stream().mapToDouble(a -> a.getEngagementRate() != null ? a.getEngagementRate() : 0.0).average().orElse(0.0);
 
         int totalPosts = (int) (isAdmin ? postRepository.count() : postRepository.findByRestaurantOwnerEmail(currentUserEmail).size());
 
         return AnalyticsOverviewDto.builder()
-                .totalReach(totalReach > 0 ? totalReach : 148500)
-                .totalImpressions(totalImpressions > 0 ? totalImpressions : 312000)
-                .totalLikes(totalLikes > 0 ? totalLikes : 24600)
-                .totalComments(totalComments > 0 ? totalComments : 3820)
-                .totalShares(totalShares > 0 ? totalShares : 1940)
+                .totalReach(totalReach)
+                .totalImpressions(totalImpressions)
+                .totalLikes(totalLikes)
+                .totalComments(totalComments)
+                .totalShares(totalShares)
                 .totalFollowers(totalFollowers)
                 .averageEngagementRate(avgEngagementRate)
                 .totalPosts(totalPosts)

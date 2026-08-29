@@ -21,7 +21,9 @@ public class AIHistoryController {
     private final AIHistoryService aiHistoryService;
 
     private boolean isAdmin(Authentication authentication) {
-        return authentication != null && authentication.getAuthorities().contains(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        if (authentication == null) return false;
+        return authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equalsIgnoreCase(a.getAuthority()) || "ADMIN".equalsIgnoreCase(a.getAuthority()));
     }
 
     @GetMapping

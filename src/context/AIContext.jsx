@@ -1,12 +1,13 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
-import { aiHistory as initialHistory } from '../data/aiHistory'
 import { generateAIContent } from '../data/aiResponses'
+import { useAuth } from './AuthContext'
 import aiService from '../services/aiService'
 
 const AIContext = createContext()
 
 export function AIProvider({ children }) {
-  const [history, setHistory] = useState(initialHistory)
+  const { token } = useAuth()
+  const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(false)
   const [chatMessages, setChatMessages] = useState([
     {
@@ -21,10 +22,10 @@ export function AIProvider({ children }) {
     setLoading(true)
     aiService.getHistory()
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           const formatted = data.map(h => ({
             id: String(h.id),
-            restaurantName: h.restaurantName || 'Bella Italia Bistro',
+            restaurantName: h.restaurantName || 'Restaurant',
             contentType: h.contentType || 'Social Media Caption',
             prompt: h.prompt,
             generatedContent: h.generatedContent,
@@ -34,10 +35,10 @@ export function AIProvider({ children }) {
         }
       })
       .catch((err) => {
-        console.log('Using fallback mock data for AI History:', err.message)
+        console.warn('[AIContext fetch error]:', err.message)
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [token])
 
   const addToHistory = useCallback(async (entry) => {
     try {

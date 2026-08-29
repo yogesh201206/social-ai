@@ -7,12 +7,14 @@ import {
   initialAdminSettingsData,
 } from '../data/adminData'
 import { useNotifications } from './NotificationContext'
+import { useAuth } from './AuthContext'
 import adminService from '../services/adminService'
 import userService from '../services/userService'
 
 const AdminContext = createContext()
 
 export function AdminProvider({ children }) {
+  const { token } = useAuth()
   const [users, setUsers] = useState(initialUsersData)
   const [restaurants, setRestaurants] = useState(initialRestaurantsData)
   const [reportsData] = useState(reportsAnalyticsData)
@@ -27,21 +29,22 @@ export function AdminProvider({ children }) {
     adminService.getDashboard()
       .then((data) => {
         if (data) {
+          const formatNum = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n || 0))
           setAdminStats([
-            { id: 'total-users', title: 'Total Users', value: String(data.totalUsers || 248), change: '+12%', changeType: 'increase', icon: 'Users', description: 'Registered platform users' },
-            { id: 'active-users', title: 'Active Users', value: String(data.activeUsers || 216), change: '+8%', changeType: 'increase', icon: 'UserCheck', description: 'Active in last 30 days' },
-            { id: 'total-restaurants', title: 'Total Restaurants', value: String(data.totalRestaurants || 86), change: '+15%', changeType: 'increase', icon: 'Store', description: 'Active restaurant profiles' },
-            { id: 'total-branches', title: 'Total Branches', value: String(data.totalBranches || 142), change: '+10%', changeType: 'increase', icon: 'Building', description: 'Across all restaurants' },
-            { id: 'total-posts', title: 'Total Posts', value: data.totalPosts >= 1000 ? `${(data.totalPosts / 1000).toFixed(1)}K` : String(data.totalPosts || '4.8K'), change: '+24%', changeType: 'increase', icon: 'FileText', description: 'Created on platform' },
-            { id: 'scheduled-posts', title: 'Scheduled Posts', value: String(data.scheduledPosts || 684), change: '+6%', changeType: 'increase', icon: 'Calendar', description: 'Pending publishing' },
-            { id: 'ai-generations', title: 'AI Generations', value: data.aiGenerations >= 1000 ? `${(data.aiGenerations / 1000).toFixed(1)}K` : String(data.aiGenerations || '12.8K'), change: '+35%', changeType: 'increase', icon: 'Sparkles', description: 'Captions & ideas generated' },
-            { id: 'active-campaigns', title: 'Active Campaigns', value: String(data.activeCampaigns || 94), change: '+18%', changeType: 'increase', icon: 'Mail', description: 'Email campaigns' },
+            { id: 'total-users', title: 'Total Users', value: String(data.totalUsers ?? 0), change: '+12%', changeType: 'increase', icon: 'Users', description: 'Registered platform users' },
+            { id: 'active-users', title: 'Active Users', value: String(data.activeUsers ?? 0), change: '+8%', changeType: 'increase', icon: 'UserCheck', description: 'Active in last 30 days' },
+            { id: 'total-restaurants', title: 'Total Restaurants', value: String(data.totalRestaurants ?? 0), change: '+15%', changeType: 'increase', icon: 'Store', description: 'Active restaurant profiles' },
+            { id: 'total-branches', title: 'Total Branches', value: String(data.totalBranches ?? 0), change: '+10%', changeType: 'increase', icon: 'Building', description: 'Across all restaurants' },
+            { id: 'total-posts', title: 'Total Posts', value: formatNum(data.totalPosts), change: '+24%', changeType: 'increase', icon: 'FileText', description: 'Created on platform' },
+            { id: 'scheduled-posts', title: 'Scheduled Posts', value: String(data.scheduledPosts ?? 0), change: '+6%', changeType: 'increase', icon: 'Calendar', description: 'Pending publishing' },
+            { id: 'ai-generations', title: 'AI Generations', value: formatNum(data.aiGenerations), change: '+35%', changeType: 'increase', icon: 'Sparkles', description: 'Captions & ideas generated' },
+            { id: 'active-campaigns', title: 'Active Campaigns', value: String(data.activeCampaigns ?? 0), change: '+18%', changeType: 'increase', icon: 'Mail', description: 'Email campaigns' },
           ])
         }
       })
       .catch((e) => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [token])
 
   const getUser = useCallback(
     (id) => users.find((u) => u.id === id || String(u.id) === String(id)),

@@ -7,37 +7,101 @@ import ActivityCard from '../components/ActivityCard'
 import Card from '../components/Card'
 import PostTable from '../components/PostTable'
 import { StatCardSkeleton } from '../components/Skeleton'
+import { useAuth } from '../context/AuthContext'
+import { useRestaurants } from '../context/RestaurantContext'
 import { usePosts } from '../context/PostContext'
-import { dashboardStats, quickActions, userProfile } from '../data/dashboardData'
+import { useEmailMarketing } from '../context/EmailMarketingContext'
+import { useAI } from '../context/AIContext'
+import { useAnalytics } from '../context/AnalyticsContext'
+import { quickActions } from '../data/dashboardData'
 import { activities } from '../data/activityData'
 
 export default function UserDashboard() {
   const [loading, setLoading] = useState(true)
+  const { user } = useAuth()
+  const { restaurants } = useRestaurants()
   const { posts, getRecentPosts, getPostsByStatus, getPerformanceOverview } = usePosts()
+  const { campaigns } = useEmailMarketing()
+  const { history } = useAI()
+  const { overviewStats } = useAnalytics()
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 600)
+    const timer = setTimeout(() => setLoading(false), 500)
     return () => clearTimeout(timer)
   }, [])
+
+  const totalRestaurants = restaurants.length
+  const totalBranches = restaurants.reduce((sum, r) => sum + (r.branches?.length || r.branchCount || 0), 0)
+  const scheduledCount = getPostsByStatus('Scheduled').length
+  const draftCount = getPostsByStatus('Draft').length
+  const publishedCount = getPostsByStatus('Published').length
+  const activeCampaigns = campaigns.filter(c => c.status === 'Active' || c.status === 'Scheduled').length
+  const aiGenerations = history.length
+  const totalReach = overviewStats?.totalReach?.value || '0'
+  const performance = getPerformanceOverview()
+
+  const stats = [
+    {
+      label: 'Total Restaurants',
+      value: String(totalRestaurants),
+      growth: totalRestaurants > 0 ? '+100%' : '0%',
+      icon: 'Building2',
+      color: 'brand',
+    },
+    {
+      label: 'Total Branches',
+      value: String(totalBranches),
+      growth: totalBranches > 0 ? '+100%' : '0%',
+      icon: 'MapPin',
+      color: 'purple',
+    },
+    {
+      label: 'Scheduled Posts',
+      value: String(scheduledCount),
+      growth: scheduledCount > 0 ? '+100%' : '0%',
+      icon: 'Calendar',
+      color: 'indigo',
+    },
+    {
+      label: 'Active Campaigns',
+      value: String(activeCampaigns),
+      growth: activeCampaigns > 0 ? '+100%' : '0%',
+      icon: 'Megaphone',
+      color: 'accent',
+    },
+    {
+      label: 'AI Generations',
+      value: String(aiGenerations),
+      growth: aiGenerations > 0 ? '+100%' : '0%',
+      icon: 'Sparkles',
+      color: 'brand',
+    },
+    {
+      label: 'Total Reach',
+      value: String(totalReach),
+      growth: totalReach !== '0' ? '+18%' : '0%',
+      icon: 'TrendingUp',
+      color: 'purple',
+    },
+  ]
+
+  const postStats = [
+    { label: 'Draft Posts', value: String(draftCount), icon: FileEdit, color: 'yellow', path: '/dashboard/posts/drafts' },
+    { label: 'Scheduled', value: String(scheduledCount), icon: Calendar, color: 'indigo', path: '/dashboard/posts/scheduled' },
+    { label: 'Published', value: String(publishedCount), icon: CheckCircle, color: 'green', path: '/dashboard/posts/published' },
+    { label: 'Total Posts', value: String(posts.length), icon: FileText, color: 'brand', path: '/dashboard/posts' },
+  ]
 
   const recentPosts = getRecentPosts(5)
   const scheduledPosts = getPostsByStatus('Scheduled').slice(0, 4)
   const draftPosts = getPostsByStatus('Draft').slice(0, 3)
   const publishedPosts = getPostsByStatus('Published').slice(0, 3)
-  const performance = getPerformanceOverview()
-
-  const postStats = [
-    { label: 'Draft Posts', value: String(getPostsByStatus('Draft').length), icon: FileEdit, color: 'yellow', path: '/dashboard/posts/drafts' },
-    { label: 'Scheduled', value: String(getPostsByStatus('Scheduled').length), icon: Calendar, color: 'indigo', path: '/dashboard/posts/scheduled' },
-    { label: 'Published', value: String(getPostsByStatus('Published').length), icon: CheckCircle, color: 'green', path: '/dashboard/posts/published' },
-    { label: 'Total Posts', value: String(posts.length), icon: FileText, color: 'brand', path: '/dashboard/posts' },
-  ]
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-          Welcome back, {userProfile.name.split(' ')[0]}!
+          Welcome back, {user?.name ? user.name.split(' ')[0] : 'User'}!
         </h2>
         <p className="text-gray-500 dark:text-gray-400 mt-1">
           Here&apos;s what&apos;s happening with your social media today.
@@ -47,7 +111,7 @@ export default function UserDashboard() {
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4 lg:gap-6">
         {loading
           ? Array.from({ length: 6 }).map((_, i) => <StatCardSkeleton key={i} />)
-          : dashboardStats.map((stat) => (
+          : stats.map((stat) => (
               <StatCard key={stat.label} {...stat} />
             ))}
       </div>

@@ -40,14 +40,14 @@ public class AdminServiceImpl implements AdminService {
         long activeCampaigns = emailCampaignRepository.count();
 
         return AdminDashboardDto.builder()
-                .totalUsers(totalUsers > 0 ? totalUsers : 248L)
-                .activeUsers(activeUsers > 0 ? activeUsers : 216L)
-                .totalRestaurants(totalRestaurants > 0 ? totalRestaurants : 86L)
-                .totalBranches(totalBranches > 0 ? totalBranches : 142L)
-                .totalPosts(totalPosts > 0 ? totalPosts : 4820L)
-                .scheduledPosts(scheduledPosts > 0 ? scheduledPosts : 684L)
-                .aiGenerations(aiGenerations > 0 ? aiGenerations : 12800L)
-                .activeCampaigns(activeCampaigns > 0 ? activeCampaigns : 94L)
+                .totalUsers(totalUsers)
+                .activeUsers(activeUsers)
+                .totalRestaurants(totalRestaurants)
+                .totalBranches(totalBranches)
+                .totalPosts(totalPosts)
+                .scheduledPosts(scheduledPosts)
+                .aiGenerations(aiGenerations)
+                .activeCampaigns(activeCampaigns)
                 .build();
     }
 

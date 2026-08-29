@@ -1,12 +1,13 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
-import { initialCampaigns } from '../data/emailMarketingData'
 import { useNotifications } from './NotificationContext'
+import { useAuth } from './AuthContext'
 import emailService from '../services/emailService'
 
 const EmailMarketingContext = createContext()
 
 export function EmailMarketingProvider({ children }) {
-  const [campaigns, setCampaigns] = useState(initialCampaigns)
+  const { token } = useAuth()
+  const [campaigns, setCampaigns] = useState([])
   const [loading, setLoading] = useState(false)
   const { addNotification } = useNotifications()
 
@@ -14,12 +15,12 @@ export function EmailMarketingProvider({ children }) {
     setLoading(true)
     emailService.getAll()
       .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           const formatted = data.map(c => ({
             id: String(c.id),
             name: c.campaignName,
             restaurantId: String(c.restaurantId),
-            restaurantName: c.restaurantName || 'Bella Italia Bistro',
+            restaurantName: c.restaurantName || 'Restaurant',
             branchId: c.branchId ? String(c.branchId) : null,
             branchName: c.branchName || 'Main Branch',
             audience: c.audience || 'All VIP Customers',
@@ -28,20 +29,20 @@ export function EmailMarketingProvider({ children }) {
             content: c.content,
             ctaText: c.ctaText || 'Reserve Table',
             ctaLink: c.ctaLink || 'https://bellaitalia.com',
-            recipients: c.recipientCount || 1500,
+            recipients: c.recipientCount || 0,
             status: c.status ? c.status.charAt(0) + c.status.slice(1).toLowerCase() : 'Draft',
-            createdDate: c.createdAt ? c.createdAt.split('T')[0] : '2026-08-20',
+            createdDate: c.createdAt ? c.createdAt.split('T')[0] : 'Recently',
             analytics: {
-              sent: c.status === 'SENT' ? (c.recipientCount || 1500) : 0,
-              delivered: c.status === 'SENT' ? Math.round((c.recipientCount || 1500) * 0.98) : 0,
+              sent: c.status === 'SENT' ? (c.recipientCount || 0) : 0,
+              delivered: c.status === 'SENT' ? Math.round((c.recipientCount || 0) * 0.98) : 0,
               deliveredRate: c.status === 'SENT' ? '98.0%' : '0%',
-              opened: c.status === 'SENT' ? Math.round((c.recipientCount || 1500) * 0.65) : 0,
+              opened: c.status === 'SENT' ? Math.round((c.recipientCount || 0) * 0.65) : 0,
               openRate: c.status === 'SENT' ? '65.0%' : '0%',
-              clicked: c.status === 'SENT' ? Math.round((c.recipientCount || 1500) * 0.22) : 0,
+              clicked: c.status === 'SENT' ? Math.round((c.recipientCount || 0) * 0.22) : 0,
               clickRate: c.status === 'SENT' ? '22.0%' : '0%',
-              bounced: c.status === 'SENT' ? Math.round((c.recipientCount || 1500) * 0.02) : 0,
+              bounced: c.status === 'SENT' ? Math.round((c.recipientCount || 0) * 0.02) : 0,
               bounceRate: c.status === 'SENT' ? '2.0%' : '0%',
-              unsubscribed: c.status === 'SENT' ? Math.round((c.recipientCount || 1500) * 0.005) : 0,
+              unsubscribed: c.status === 'SENT' ? Math.round((c.recipientCount || 0) * 0.005) : 0,
               unsubscribeRate: c.status === 'SENT' ? '0.5%' : '0%',
               dailyPerformance: []
             }
@@ -50,10 +51,10 @@ export function EmailMarketingProvider({ children }) {
         }
       })
       .catch((err) => {
-        console.log('Using fallback mock data for Email Marketing:', err.message)
+        console.warn('[EmailMarketingContext fetch error]:', err.message)
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [token])
 
   const addCampaign = useCallback(async (campaignData) => {
     try {

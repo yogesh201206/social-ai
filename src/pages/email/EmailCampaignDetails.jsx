@@ -36,18 +36,19 @@ export default function EmailCampaignDetails() {
     )
   }
 
+  const isSent = campaign.status === 'Sent'
   const analytics = campaign.analytics || {
     sent: campaign.recipients || 0,
-    delivered: Math.round((campaign.recipients || 0) * 0.98),
-    deliveredRate: '98.0%',
-    opened: Math.round((campaign.recipients || 0) * 0.68),
-    openRate: '68.4%',
-    clicked: Math.round((campaign.recipients || 0) * 0.24),
-    clickRate: '24.6%',
-    bounced: Math.round((campaign.recipients || 0) * 0.02),
-    bounceRate: '2.0%',
-    unsubscribed: Math.round((campaign.recipients || 0) * 0.005),
-    unsubscribeRate: '0.5%',
+    delivered: isSent ? (campaign.recipients || 0) : 0,
+    deliveredRate: isSent ? '100%' : '0%',
+    opened: 0,
+    openRate: '0%',
+    clicked: 0,
+    clickRate: '0%',
+    bounced: 0,
+    bounceRate: '0%',
+    unsubscribed: 0,
+    unsubscribeRate: '0%',
   }
 
   const handleDelete = () => {

@@ -43,10 +43,10 @@ export default function Analytics() {
   ]
 
   // Follower growth calculations
-  const firstFollowers = timelineData[0]?.followers || 38200
-  const lastFollowers = timelineData[timelineData.length - 1]?.followers || 42800
+  const firstFollowers = timelineData[0]?.followers ?? 0
+  const lastFollowers = timelineData[timelineData.length - 1]?.followers ?? 0
   const netGrowth = lastFollowers - firstFollowers
-  const growthRatePercent = ((netGrowth / (firstFollowers || 1)) * 100).toFixed(1)
+  const growthRatePercent = firstFollowers > 0 ? ((netGrowth / firstFollowers) * 100).toFixed(1) : '0.0'
 
   return (
     <div className="space-y-6 animate-fade-in pb-12">
@@ -169,7 +169,7 @@ export default function Analytics() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-500" />
             </div>
           ) : (
-            <BarChartComponent platforms={platformData.length > 0 ? platformData : platformPerformanceData} />
+            <BarChartComponent platforms={platformData} />
           )}
         </Card>
 

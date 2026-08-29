@@ -34,16 +34,16 @@ export function EmailMarketingProvider({ children }) {
             createdDate: c.createdAt ? c.createdAt.split('T')[0] : 'Recently',
             analytics: {
               sent: c.status === 'SENT' ? (c.recipientCount || 0) : 0,
-              delivered: c.status === 'SENT' ? Math.round((c.recipientCount || 0) * 0.98) : 0,
-              deliveredRate: c.status === 'SENT' ? '98.0%' : '0%',
-              opened: c.status === 'SENT' ? Math.round((c.recipientCount || 0) * 0.65) : 0,
-              openRate: c.status === 'SENT' ? '65.0%' : '0%',
-              clicked: c.status === 'SENT' ? Math.round((c.recipientCount || 0) * 0.22) : 0,
-              clickRate: c.status === 'SENT' ? '22.0%' : '0%',
-              bounced: c.status === 'SENT' ? Math.round((c.recipientCount || 0) * 0.02) : 0,
-              bounceRate: c.status === 'SENT' ? '2.0%' : '0%',
-              unsubscribed: c.status === 'SENT' ? Math.round((c.recipientCount || 0) * 0.005) : 0,
-              unsubscribeRate: c.status === 'SENT' ? '0.5%' : '0%',
+              delivered: c.status === 'SENT' ? (c.recipientCount || 0) : 0,
+              deliveredRate: c.status === 'SENT' ? '100%' : '0%',
+              opened: 0,
+              openRate: '0%',
+              clicked: 0,
+              clickRate: '0%',
+              bounced: 0,
+              bounceRate: '0%',
+              unsubscribed: 0,
+              unsubscribeRate: '0%',
               dailyPerformance: []
             }
           }))

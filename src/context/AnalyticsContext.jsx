@@ -27,6 +27,12 @@ export function AnalyticsProvider({ children }) {
   const [apiOverview, setApiOverview] = useState(null)
 
   useEffect(() => {
+    setSelectedRestaurant('all')
+    setSelectedBranch('all')
+    setSelectedPlatform('all')
+  }, [token])
+
+  useEffect(() => {
     const params = {}
     if (selectedRestaurant !== 'all') params.restaurantId = selectedRestaurant
     if (selectedBranch !== 'all') params.branchId = selectedBranch

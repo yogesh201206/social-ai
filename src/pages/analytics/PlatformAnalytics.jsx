@@ -12,7 +12,7 @@ export default function PlatformAnalytics() {
   const { platformData, timelineData, selectedPlatform, setSelectedPlatform } = useAnalytics()
   const [activeTab, setActiveTab] = useState('All')
 
-  const activePlatforms = platformData.length > 0 ? platformData : platformPerformanceData
+  const activePlatforms = platformData
 
   return (
     <div className="space-y-6 animate-fade-in pb-12">
@@ -39,9 +39,9 @@ export default function PlatformAnalytics() {
               : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:border-brand-500'
           }`}
         >
-          All Platforms ({platformPerformanceData.length})
+          All Platforms ({activePlatforms.length})
         </button>
-        {platformPerformanceData.map((plat) => {
+        {activePlatforms.map((plat) => {
           const IconComponent = Icons[plat.icon] || Layers
           const isSelected = selectedPlatform.toLowerCase().includes(plat.platform.toLowerCase())
           return (
@@ -62,7 +62,12 @@ export default function PlatformAnalytics() {
       </div>
 
       {/* Platform Cards Grid */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {activePlatforms.length === 0 ? (
+        <Card className="p-8 text-center text-gray-500 dark:text-gray-400">
+          No platform analytics available.
+        </Card>
+      ) : (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {activePlatforms.map((plat) => {
           const IconComponent = Icons[plat.icon] || Layers
           const isYouTube = plat.platform === 'YouTube'

@@ -21,6 +21,7 @@ public class ScheduleRequest {
 
     private Long branchId;
 
+    @NotNull(message = "Platform is required")
     private Platform platform;
 
     @NotNull(message = "Scheduled date time is required")

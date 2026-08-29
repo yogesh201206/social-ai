@@ -32,17 +32,25 @@ export default function ScheduledPostDetails() {
 
   const timezoneLabel = schedulerTimezones.find((tz) => tz.value === post.timezone)?.label || post.timezone
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
     if (window.confirm('Cancel this scheduled post?')) {
-      cancelScheduledPost(id)
-      navigate('/dashboard/scheduler')
+      try {
+        await cancelScheduledPost(id)
+        navigate('/dashboard/scheduler')
+      } catch (err) {
+        alert(err.message || 'Failed to cancel scheduled post')
+      }
     }
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (window.confirm('Permanently delete this post? This action cannot be undone.')) {
-      deleteScheduledPost(id)
-      navigate('/dashboard/scheduler')
+      try {
+        await deleteScheduledPost(id)
+        navigate('/dashboard/scheduler')
+      } catch (err) {
+        alert(err.message || 'Failed to delete post')
+      }
     }
   }
 

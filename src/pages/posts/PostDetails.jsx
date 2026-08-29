@@ -26,9 +26,15 @@ export default function PostDetails() {
   const PlatformIcon = Icons[platformIcons[post.platform]] || Icons.Globe
   const gradient = platformColors[post.platform] || 'from-gray-500 to-gray-600'
 
-  const handleDelete = () => {
-    deletePost(id)
-    navigate('/dashboard/posts')
+  const handleDelete = async () => {
+    if (window.confirm('Are you sure you want to delete this post? This action cannot be undone.')) {
+      try {
+        await deletePost(id)
+        navigate('/dashboard/posts')
+      } catch (err) {
+        alert(err.message || 'Failed to delete post')
+      }
+    }
   }
 
   return (

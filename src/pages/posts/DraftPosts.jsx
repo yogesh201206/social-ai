@@ -18,9 +18,13 @@ export default function DraftPosts() {
     return () => clearTimeout(timer)
   }, [])
 
-  const handleDelete = (id) => {
-    deletePost(id)
-    setShowDeleteConfirm(null)
+  const handleDelete = async (id) => {
+    try {
+      await deletePost(id)
+      setShowDeleteConfirm(null)
+    } catch (err) {
+      alert(err.message || 'Failed to delete draft')
+    }
   }
 
   return (

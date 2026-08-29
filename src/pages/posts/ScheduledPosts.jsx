@@ -18,9 +18,13 @@ export default function ScheduledPosts() {
     return () => clearTimeout(timer)
   }, [])
 
-  const handleCancel = (id) => {
-    cancelSchedule(id)
-    setShowCancelConfirm(null)
+  const handleCancel = async (id) => {
+    try {
+      await cancelSchedule(id)
+      setShowCancelConfirm(null)
+    } catch (err) {
+      alert(err.message || 'Failed to cancel schedule')
+    }
   }
 
   return (

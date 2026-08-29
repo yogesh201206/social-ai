@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Eye, Save, Calendar, Hash, Megaphone, Lightbulb } from 'lucide-react'
+import { ArrowLeft, Eye, Save, Calendar, Hash, Megaphone, Lightbulb, AlertCircle } from 'lucide-react'
 import { usePosts } from '../../context/PostContext'
 import { useRestaurants } from '../../context/RestaurantContext'
 import UploadBox from '../../components/UploadBox'
@@ -16,6 +16,7 @@ const defaultForm = {
   hashtags: '',
   cta: '',
   restaurantId: '',
+  branchId: '',
   scheduledDate: '',
   scheduledTime: '',
 }
@@ -36,13 +37,17 @@ function formatScheduleTime(timeStr) {
 
 function parseScheduleDateForInput(dateStr) {
   if (!dateStr) return ''
-  const parsed = new Date(`${dateStr} 12:00:00`)
+  const parsed = new Date(dateStr.includes('T') ? dateStr : `${dateStr} 12:00:00`)
   if (Number.isNaN(parsed.getTime())) return ''
   return parsed.toISOString().split('T')[0]
 }
 
 function parseScheduleTimeForInput(timeStr) {
   if (!timeStr) return ''
+  if (timeStr.includes('T')) {
+    const parts = timeStr.split('T')[1].split(':')
+    return `${parts[0]}:${parts[1]}`
+  }
   const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
   if (!match) return ''
   let hours = parseInt(match[1], 10)
@@ -65,8 +70,16 @@ export default function CreatePost() {
   const [showSchedule, setShowSchedule] = useState(false)
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState({})
+  const [apiError, setApiError] = useState('')
   const [showTips, setShowTips] = useState(false)
   const [draftSaved, setDraftSaved] = useState(false)
+
+  const selectedRestaurant = useMemo(
+    () => restaurants.find((r) => String(r.id) === String(form.restaurantId)),
+    [restaurants, form.restaurantId]
+  )
+
+  const availableBranches = selectedRestaurant?.branches || []
 
   // Autosave to localStorage
   useEffect(() => {
@@ -105,17 +118,18 @@ export default function CreatePost() {
       const post = getPost(id)
       if (post) {
         setForm({
-          title: post.title,
-          caption: post.caption,
-          platform: post.platform,
-          hashtags: post.hashtags?.join(' ') || '',
+          title: post.title || '',
+          caption: post.caption || '',
+          platform: post.platform || 'Instagram',
+          hashtags: Array.isArray(post.hashtags) ? post.hashtags.join(' ') : (post.hashtags || ''),
           cta: post.cta || '',
-          restaurantId: post.restaurantId,
-          scheduledDate: parseScheduleDateForInput(post.scheduledDate),
-          scheduledTime: parseScheduleTimeForInput(post.scheduledTime),
+          restaurantId: post.restaurantId ? String(post.restaurantId) : '',
+          branchId: post.branchId ? String(post.branchId) : '',
+          scheduledDate: parseScheduleDateForInput(post.scheduledAt || post.scheduledDate),
+          scheduledTime: parseScheduleTimeForInput(post.scheduledAt || post.scheduledTime),
         })
-        setImage(post.image ? { preview: post.image } : null)
-        if (post.status === 'Scheduled') setShowSchedule(true)
+        setImage(post.image || post.imageUrl ? { preview: post.image || post.imageUrl } : null)
+        if (post.status?.toLowerCase() === 'scheduled') setShowSchedule(true)
       }
     }
   }, [id, isEdit, getPost])
@@ -132,29 +146,46 @@ export default function CreatePost() {
   }
 
   const updateField = (field, value) => {
-    setForm((prev) => ({ ...prev, [field]: value }))
-    // Clear error when field is updated
+    setForm((prev) => {
+      const next = { ...prev, [field]: value }
+      if (field === 'restaurantId') {
+        next.branchId = ''
+      }
+      return next
+    })
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: null }))
     }
+    setApiError('')
   }
 
-  const validate = () => {
+  const validate = (forSchedule = false) => {
     const newErrors = {}
     if (!form.title.trim()) newErrors.title = 'Post title is required'
     if (!form.caption.trim()) newErrors.caption = 'Caption is required'
     if (charCount > charLimit) newErrors.caption = `Caption exceeds ${charLimit.toLocaleString()} character limit`
     if (!form.platform) newErrors.platform = 'Please select a platform'
     if (!form.restaurantId) newErrors.restaurantId = 'Please select a restaurant'
-    if (showSchedule && (!form.scheduledDate || !form.scheduledTime)) {
-      newErrors.schedule = 'Please select both date and time for scheduling'
+
+    if (forSchedule || showSchedule) {
+      if (!form.scheduledDate) {
+        newErrors.schedule = 'Scheduled date is required'
+      } else if (!form.scheduledTime) {
+        newErrors.schedule = 'Scheduled time is required'
+      } else {
+        const scheduledDateTime = new Date(`${form.scheduledDate}T${form.scheduledTime}:00`)
+        if (Number.isNaN(scheduledDateTime.getTime()) || scheduledDateTime <= new Date()) {
+          newErrors.schedule = 'Scheduled date and time must be in the future'
+        }
+      }
     }
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
   const buildPostData = (status) => {
-    const restaurant = restaurants.find((r) => r.id === form.restaurantId) || restaurants[0]
+    const restaurant = restaurants.find((r) => String(r.id) === String(form.restaurantId)) || restaurants[0]
     const hashtags = form.hashtags
       .split(/[\s,]+/)
       .filter(Boolean)
@@ -163,34 +194,39 @@ export default function CreatePost() {
     return {
       title: form.title,
       caption: form.caption,
+      imageUrl: image?.preview || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&h=400&fit=crop',
       image: image?.preview || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&h=400&fit=crop',
       platform: form.platform,
       status,
       hashtags,
       cta: form.cta,
-      restaurantId: restaurant?.id || '1',
+      restaurantId: form.restaurantId,
       restaurantName: restaurant?.name || userProfile.businessName,
-      restaurantLogo: restaurant?.logo || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=100&h=100&fit=crop',
-      scheduledDate: status === 'Scheduled' ? formatScheduleDate(form.scheduledDate) : null,
-      scheduledTime: status === 'Scheduled' ? formatScheduleTime(form.scheduledTime) : null,
-      publishedAt: null,
-      metrics: null,
+      branchId: form.branchId || null,
+      scheduledDate: status === 'Scheduled' ? form.scheduledDate : null,
+      scheduledTimeInput: status === 'Scheduled' ? form.scheduledTime : null,
+      scheduledAt: status === 'Scheduled' && form.scheduledDate && form.scheduledTime ? `${form.scheduledDate}T${form.scheduledTime}:00` : null,
     }
   }
 
   const handleSaveDraft = async () => {
-    if (!validate()) return
+    if (!validate(false)) return
     setSaving(true)
-    await new Promise((r) => setTimeout(r, 400))
-    const data = buildPostData('Draft')
-    if (isEdit) {
-      updatePost(id, data)
-    } else {
-      addPost(data)
+    setApiError('')
+    try {
+      const data = buildPostData('Draft')
+      if (isEdit) {
+        await updatePost(id, data)
+      } else {
+        await addPost(data)
+      }
+      localStorage.removeItem('createPostDraft')
+      navigate('/dashboard/posts/drafts')
+    } catch (err) {
+      setApiError(err.message || 'Failed to save draft')
+    } finally {
+      setSaving(false)
     }
-    localStorage.removeItem('createPostDraft')
-    setSaving(false)
-    navigate('/dashboard/posts/drafts')
   }
 
   const handlePreview = () => {
@@ -199,22 +235,24 @@ export default function CreatePost() {
   }
 
   const handleSchedule = async () => {
-    if (!form.scheduledDate || !form.scheduledTime) {
-      setShowSchedule(true)
-      return
-    }
-    if (!validate()) return
+    setShowSchedule(true)
+    if (!validate(true)) return
     setSaving(true)
-    await new Promise((r) => setTimeout(r, 400))
-    const data = buildPostData('Scheduled')
-    if (isEdit) {
-      updatePost(id, data)
-    } else {
-      addPost(data)
+    setApiError('')
+    try {
+      const data = buildPostData('Scheduled')
+      if (isEdit) {
+        await updatePost(id, data)
+      } else {
+        await addPost(data)
+      }
+      localStorage.removeItem('createPostDraft')
+      navigate('/dashboard/posts/scheduled')
+    } catch (err) {
+      setApiError(err.message || 'Failed to schedule post')
+    } finally {
+      setSaving(false)
     }
-    localStorage.removeItem('createPostDraft')
-    setSaving(false)
-    navigate('/dashboard/posts/scheduled')
   }
 
   const addHashtag = useCallback((tag) => {
@@ -228,6 +266,7 @@ export default function CreatePost() {
 
   const currentTips = captionTips[form.platform] || captionTips['Instagram']
   const suggestedHashtags = platformHashtagSuggestions[form.platform] || platformHashtagSuggestions['Instagram']
+  const todayDateStr = new Date().toISOString().split('T')[0]
 
   return (
     <div className="space-y-6 animate-fade-in max-w-4xl">
@@ -256,12 +295,19 @@ export default function CreatePost() {
         )}
       </div>
 
+      {apiError && (
+        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 flex items-center gap-3">
+          <AlertCircle className="h-5 w-5 flex-shrink-0" />
+          <p className="text-sm font-medium">{apiError}</p>
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <div className="glass rounded-2xl p-6 space-y-5">
             <div>
               <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Post Title
+                Post Title *
               </label>
               <input
                 id="title"
@@ -279,7 +325,7 @@ export default function CreatePost() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label htmlFor="caption" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Caption
+                  Caption *
                 </label>
                 <div className="flex items-center gap-2">
                   <button
@@ -336,7 +382,7 @@ export default function CreatePost() {
 
           <div className="glass rounded-2xl p-6 space-y-4">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Select Platform
+              Select Platform *
             </label>
             <PlatformSelector
               value={form.platform}
@@ -393,7 +439,7 @@ export default function CreatePost() {
 
           <div className="glass rounded-2xl p-6 space-y-4">
             <label htmlFor="restaurant" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Restaurant
+              Restaurant *
             </label>
             <select
               id="restaurant"
@@ -409,6 +455,24 @@ export default function CreatePost() {
               ))}
             </select>
             {errors.restaurantId && <p className="text-xs text-red-500">{errors.restaurantId}</p>}
+          </div>
+
+          <div className="glass rounded-2xl p-6 space-y-4">
+            <label htmlFor="branch" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Branch (Optional)
+            </label>
+            <select
+              id="branch"
+              value={form.branchId}
+              onChange={(e) => updateField('branchId', e.target.value)}
+              disabled={!form.restaurantId}
+              className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500/50 disabled:opacity-50"
+            >
+              <option value="">All Branches / Main Location</option>
+              {availableBranches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name || b.branchName}</option>
+              ))}
+            </select>
           </div>
 
           <div className="glass rounded-2xl p-6 space-y-4">
@@ -432,6 +496,7 @@ export default function CreatePost() {
                   <input
                     id="scheduledDate"
                     type="date"
+                    min={todayDateStr}
                     value={form.scheduledDate}
                     onChange={(e) => updateField('scheduledDate', e.target.value)}
                     className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500/50"

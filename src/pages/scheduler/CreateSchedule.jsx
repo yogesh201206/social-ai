@@ -165,6 +165,8 @@ export default function CreateSchedule() {
     }
   }, [isEdit, editId, getScheduledPost, location.state])
 
+  const [apiError, setApiError] = useState('')
+
   const validate = (forSchedule = true) => {
     const newErrors = {}
     if (!form.restaurantId) newErrors.restaurantId = 'Please select a restaurant'
@@ -172,8 +174,16 @@ export default function CreateSchedule() {
     if (form.platforms.length === 0) newErrors.platforms = 'Select at least one platform'
     if (!form.caption.trim()) newErrors.caption = 'Caption is required'
     if (forSchedule) {
-      if (!form.scheduledDate) newErrors.scheduledDate = 'Date is required'
-      if (!form.scheduledTimeInput) newErrors.scheduledTimeInput = 'Time is required'
+      if (!form.scheduledDate) {
+        newErrors.scheduledDate = 'Date is required'
+      } else if (!form.scheduledTimeInput) {
+        newErrors.scheduledTimeInput = 'Time is required'
+      } else {
+        const scheduledDateTime = new Date(`${form.scheduledDate}T${form.scheduledTimeInput}:00`)
+        if (Number.isNaN(scheduledDateTime.getTime()) || scheduledDateTime <= new Date()) {
+          newErrors.scheduledDate = 'Scheduled date and time must be in the future'
+        }
+      }
     }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
@@ -188,6 +198,7 @@ export default function CreateSchedule() {
       .map((h) => (h.startsWith('#') ? h : `#${h}`))
 
     return {
+      postId: selectedPostId || null,
       title: form.title || form.caption.slice(0, 50) + (form.caption.length > 50 ? '...' : ''),
       caption: form.caption,
       hashtags: hashtagList,
@@ -201,47 +212,55 @@ export default function CreateSchedule() {
       platforms: form.platforms,
       scheduledDate: form.scheduledDate,
       scheduledTimeInput: form.scheduledTimeInput,
+      scheduledDateTime: form.scheduledDate && form.scheduledTimeInput ? `${form.scheduledDate}T${form.scheduledTimeInput}:00` : null,
       timezone: form.timezone,
       status,
     }
   }
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     if (!validate(false)) return
     setSaving(true)
-    setTimeout(() => {
+    setApiError('')
+    try {
       const data = buildPostData('Draft')
       if (isEdit) {
-        updateScheduledPost(editId, data)
+        await updateScheduledPost(editId, data)
       } else {
-        addScheduledPost(data)
+        await addScheduledPost(data)
       }
-      setSaving(false)
       navigate('/dashboard/scheduler')
-    }, 600)
+    } catch (err) {
+      setApiError(err.message || 'Failed to save draft')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const handleSchedule = () => {
+  const handleSchedule = async () => {
     if (!validate(true)) return
     setSaving(true)
-    setTimeout(() => {
+    setApiError('')
+    try {
       const data = buildPostData('Scheduled')
       let saved
       if (isEdit) {
-        updateScheduledPost(editId, data)
-        saved = { ...data, id: editId }
+        saved = await updateScheduledPost(editId, data)
       } else {
-        saved = addScheduledPost(data)
+        saved = await addScheduledPost(data)
       }
       addNotification?.({
         title: 'Post Scheduled',
-        message: `"${data.title}" scheduled for ${data.restaurantName} (${data.branchName}) on ${data.scheduledDateDisplay || data.scheduledDate} at ${data.scheduledTime}.`,
+        message: `"${data.title}" scheduled for ${data.restaurantName} (${data.branchName}) on ${data.scheduledDateDisplay || data.scheduledDate} at ${data.scheduledTime || data.scheduledTimeInput}.`,
         type: 'schedule',
       })
-      setSaving(false)
       setSuccessData(saved)
       setShowSuccess(true)
-    }, 800)
+    } catch (err) {
+      setApiError(err.message || 'Failed to schedule post')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const previewPost = useMemo(() => {
@@ -282,6 +301,12 @@ export default function CreateSchedule() {
           </p>
         </div>
       </div>
+
+      {apiError && (
+        <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400">
+          <p className="text-sm font-medium">{apiError}</p>
+        </div>
+      )}
 
       <div className="space-y-6">
         <FormSection number="1" title="Select Restaurant" icon={Building2}>
@@ -419,6 +444,7 @@ export default function CreateSchedule() {
               </label>
               <input
                 type="date"
+                min={new Date().toISOString().split('T')[0]}
                 value={form.scheduledDate}
                 onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
                 className={inputClass('scheduledDate')}

@@ -39,15 +39,23 @@ export default function Scheduler() {
     [filterScheduledPosts, filters]
   )
 
-  const handleCancel = (id) => {
+  const handleCancel = async (id) => {
     if (window.confirm('Cancel this scheduled post?')) {
-      cancelScheduledPost(id)
+      try {
+        await cancelScheduledPost(id)
+      } catch (err) {
+        alert(err.message || 'Failed to cancel scheduled post')
+      }
     }
   }
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm('Permanently delete this post? This action cannot be undone.')) {
-      deleteScheduledPost(id)
+      try {
+        await deleteScheduledPost(id)
+      } catch (err) {
+        alert(err.message || 'Failed to delete post')
+      }
     }
   }
 

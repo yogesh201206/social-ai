@@ -33,7 +33,12 @@ export const apiFetch = async (endpoint, options = {}) => {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      const error = new Error(errorData.message || `Request failed with status ${response.status}`)
+      let message = errorData.message
+      if (errorData.errors && typeof errorData.errors === 'object') {
+        const fieldErrors = Object.entries(errorData.errors).map(([field, msg]) => `${field}: ${msg}`).join(', ')
+        if (fieldErrors) message = `${message ? message + ': ' : ''}${fieldErrors}`
+      }
+      const error = new Error(message || `Request failed with status ${response.status}`)
       error.status = response.status
       error.data = errorData
       throw error

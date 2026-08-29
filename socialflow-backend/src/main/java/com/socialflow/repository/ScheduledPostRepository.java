@@ -13,4 +13,6 @@ public interface ScheduledPostRepository extends JpaRepository<ScheduledPost, Lo
     List<ScheduledPost> findByRestaurantOwnerId(Long ownerId);
     List<ScheduledPost> findByRestaurantOwnerEmail(String email);
     List<ScheduledPost> findByStatus(ScheduleStatus status);
+    List<ScheduledPost> findByPostId(Long postId);
+    void deleteByPostId(Long postId);
 }

@@ -25,18 +25,23 @@ export default function AllPosts() {
   }, [])
 
   const filtered = posts.filter((post) => {
-    const matchesSearch =
-      post.title.toLowerCase().includes(search.toLowerCase()) ||
-      post.caption.toLowerCase().includes(search.toLowerCase()) ||
-      post.restaurantName.toLowerCase().includes(search.toLowerCase())
+    const titleMatch = post.title?.toLowerCase().includes(search.toLowerCase()) || false
+    const captionMatch = post.caption?.toLowerCase().includes(search.toLowerCase()) || false
+    const restName = post.restaurantName || post.restaurant || ''
+    const restMatch = restName.toLowerCase().includes(search.toLowerCase())
+    const matchesSearch = !search || titleMatch || captionMatch || restMatch
     const matchesStatus = statusFilter === 'All' || post.status === statusFilter
     const matchesPlatform = platformFilter === 'All' || post.platform === platformFilter
     return matchesSearch && matchesStatus && matchesPlatform
   })
 
-  const handleDelete = (id) => {
-    deletePost(id)
-    setShowDeleteConfirm(null)
+  const handleDelete = async (id) => {
+    try {
+      await deletePost(id)
+      setShowDeleteConfirm(null)
+    } catch (err) {
+      alert(err.message || 'Failed to delete post')
+    }
   }
 
   return (

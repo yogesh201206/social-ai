@@ -22,6 +22,7 @@ public class PostRequest {
     private String imageUrl;
     private String hashtags;
 
+    @NotNull(message = "Platform is required")
     private Platform platform;
 
     @NotNull(message = "Restaurant ID is required")

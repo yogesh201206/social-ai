@@ -1,107 +1,151 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { posts as initialPosts } from '../data/postsData'
 import postService from '../services/postService'
 
 const PostContext = createContext()
 
+function formatScheduleDate(dateStr) {
+  if (!dateStr) return null
+  const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function formatScheduleTime(dateStr) {
+  if (!dateStr) return null
+  const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
+function mapPostFromBackend(p) {
+  const platform = p.platform ? (p.platform.charAt(0).toUpperCase() + p.platform.slice(1).toLowerCase()) : 'Instagram'
+  const status = p.status ? (p.status.charAt(0).toUpperCase() + p.status.slice(1).toLowerCase()) : 'Draft'
+  const hashtags = p.hashtags
+    ? (typeof p.hashtags === 'string' ? p.hashtags.split(/[\s,]+/).filter(Boolean) : p.hashtags)
+    : []
+
+  return {
+    id: String(p.id),
+    title: p.title,
+    caption: p.caption || '',
+    imageUrl: p.imageUrl,
+    image: p.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&h=400&fit=crop',
+    hashtags,
+    platform,
+    restaurantId: p.restaurantId ? String(p.restaurantId) : '',
+    restaurantName: p.restaurantName || '',
+    restaurant: p.restaurantName || '',
+    branchId: p.branchId ? String(p.branchId) : '',
+    branchName: p.branchName || '',
+    branch: p.branchName || '',
+    status,
+    scheduledAt: p.scheduledAt,
+    scheduledDate: formatScheduleDate(p.scheduledAt),
+    scheduledTime: formatScheduleTime(p.scheduledAt),
+    publishedAt: p.publishedAt ? new Date(p.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null,
+    createdAt: p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
+    metrics: p.status === 'PUBLISHED' ? { likes: 120, comments: 14, shares: 8 } : null,
+  }
+}
+
 export function PostProvider({ children }) {
-  const [posts, setPosts] = useState(initialPosts)
+  const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
+  const refreshPosts = useCallback(async () => {
     setLoading(true)
-    postService.getAll()
-      .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          const formatted = data.map(p => ({
-            id: String(p.id),
-            title: p.title,
-            caption: p.caption,
-            imageUrl: p.imageUrl,
-            hashtags: p.hashtags,
-            platform: p.platform ? p.platform.charAt(0) + p.platform.slice(1).toLowerCase() : 'Instagram',
-            restaurant: p.restaurantName || 'Bella Italia Bistro',
-            branch: p.branchName || 'Main Branch',
-            status: p.status ? p.status.charAt(0) + p.status.slice(1).toLowerCase() : 'Draft',
-            createdAt: p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
-            scheduledDate: p.scheduledAt ? new Date(p.scheduledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null,
-            scheduledTime: p.scheduledAt ? new Date(p.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
-            metrics: p.status === 'PUBLISHED' ? { likes: 120, comments: 14, shares: 8 } : null,
-          }))
-          setPosts(formatted)
-        }
-      })
-      .catch((err) => {
-        console.log('Using fallback mock data for posts:', err.message)
-      })
-      .finally(() => setLoading(false))
+    try {
+      const data = await postService.getAll()
+      if (Array.isArray(data)) {
+        setPosts(data.map(mapPostFromBackend))
+      }
+    } catch (err) {
+      console.warn('[PostContext fetch error]:', err.message)
+    } finally {
+      setLoading(false)
+    }
   }, [])
+
+  useEffect(() => {
+    refreshPosts()
+  }, [refreshPosts])
 
   const getPost = useCallback((id) => posts.find((p) => String(p.id) === String(id)), [posts])
 
   const addPost = useCallback(async (post) => {
-    try {
-      const platformEnum = (post.platform || 'INSTAGRAM').toUpperCase()
-      const statusEnum = (post.status || 'DRAFT').toUpperCase()
-      const res = await postService.create({
-        title: post.title,
-        caption: post.caption,
-        imageUrl: post.imageUrl,
-        hashtags: post.hashtags,
-        platform: platformEnum,
-        restaurantId: Number(post.restaurantId) || 1,
-        branchId: post.branchId ? Number(post.branchId) : null,
-        status: statusEnum,
-      })
-      const newPost = {
-        ...post,
-        id: String(res.id),
-        createdAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-        status: post.status || 'Draft',
-        metrics: post.status === 'Published' ? post.metrics || { likes: 0, comments: 0, shares: 0 } : null,
-      }
-      setPosts((prev) => [newPost, ...prev])
-      return newPost
-    } catch (e) {
-      const newPost = {
-        ...post,
-        id: String(Date.now()),
-        createdAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-        status: post.status || 'Draft',
-        metrics: post.status === 'Published' ? post.metrics || { likes: 0, comments: 0, shares: 0 } : null,
-      }
-      setPosts((prev) => [newPost, ...prev])
-      return newPost
+    const platformEnum = (post.platform || 'INSTAGRAM').toUpperCase()
+    const statusEnum = (post.status || 'DRAFT').toUpperCase()
+    const hashtagsStr = Array.isArray(post.hashtags)
+      ? post.hashtags.join(' ')
+      : (post.hashtags || '')
+
+    let scheduledAt = post.scheduledAt
+    if (!scheduledAt && post.scheduledDate && post.scheduledTimeInput) {
+      scheduledAt = `${post.scheduledDate}T${post.scheduledTimeInput}:00`
     }
+
+    const payload = {
+      title: post.title,
+      caption: post.caption || '',
+      imageUrl: post.image || post.imageUrl || null,
+      hashtags: hashtagsStr,
+      platform: platformEnum,
+      restaurantId: post.restaurantId ? Number(post.restaurantId) : null,
+      branchId: post.branchId ? Number(post.branchId) : null,
+      status: statusEnum,
+      scheduledAt: scheduledAt || null,
+    }
+
+    const res = await postService.create(payload)
+    const newPost = mapPostFromBackend(res)
+    setPosts((prev) => [newPost, ...prev])
+    return newPost
   }, [])
 
   const updatePost = useCallback(async (id, updates) => {
-    try {
-      await postService.update(id, updates)
-    } catch (e) {}
-    setPosts((prev) =>
-      prev.map((p) => (String(p.id) === String(id) ? { ...p, ...updates } : p))
-    )
+    const payload = {}
+    if (updates.title !== undefined) payload.title = updates.title
+    if (updates.caption !== undefined) payload.caption = updates.caption
+    if (updates.image !== undefined || updates.imageUrl !== undefined) {
+      payload.imageUrl = updates.image || updates.imageUrl
+    }
+    if (updates.hashtags !== undefined) {
+      payload.hashtags = Array.isArray(updates.hashtags) ? updates.hashtags.join(' ') : updates.hashtags
+    }
+    if (updates.platform !== undefined) {
+      payload.platform = updates.platform.toUpperCase()
+    }
+    if (updates.restaurantId !== undefined) {
+      payload.restaurantId = updates.restaurantId ? Number(updates.restaurantId) : null
+    }
+    if (updates.branchId !== undefined) {
+      payload.branchId = updates.branchId ? Number(updates.branchId) : null
+    }
+    if (updates.status !== undefined) {
+      payload.status = updates.status.toUpperCase()
+    }
+    if (updates.scheduledAt !== undefined) {
+      payload.scheduledAt = updates.scheduledAt
+    } else if (updates.scheduledDate && updates.scheduledTimeInput) {
+      payload.scheduledAt = `${updates.scheduledDate}T${updates.scheduledTimeInput}:00`
+    }
+
+    const res = await postService.update(id, payload)
+    const updatedPost = mapPostFromBackend(res)
+    setPosts((prev) => prev.map((p) => (String(p.id) === String(id) ? updatedPost : p)))
+    return updatedPost
   }, [])
 
   const deletePost = useCallback(async (id) => {
-    try {
-      await postService.delete(id)
-    } catch (e) {}
+    await postService.delete(id)
     setPosts((prev) => prev.filter((p) => String(p.id) !== String(id)))
   }, [])
 
   const cancelSchedule = useCallback(async (id) => {
-    try {
-      await postService.cancel(id)
-    } catch (e) {}
-    setPosts((prev) =>
-      prev.map((p) =>
-        String(p.id) === String(id)
-          ? { ...p, status: 'Draft', scheduledDate: null, scheduledTime: null }
-          : p
-      )
-    )
+    const res = await postService.cancel(id)
+    const updatedPost = mapPostFromBackend(res)
+    setPosts((prev) => prev.map((p) => (String(p.id) === String(id) ? updatedPost : p)))
+    return updatedPost
   }, [])
 
   const getPostsByStatus = useCallback(
@@ -130,6 +174,7 @@ export function PostProvider({ children }) {
       value={{
         posts,
         loading,
+        refreshPosts,
         getPost,
         addPost,
         updatePost,
@@ -152,3 +197,4 @@ export function usePosts() {
   }
   return context
 }
+

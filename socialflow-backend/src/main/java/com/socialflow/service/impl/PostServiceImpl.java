@@ -2,15 +2,14 @@ package com.socialflow.service.impl;
 
 import com.socialflow.dto.PostRequest;
 import com.socialflow.dto.PostResponse;
-import com.socialflow.entity.Branch;
-import com.socialflow.entity.Post;
-import com.socialflow.entity.PostStatus;
-import com.socialflow.entity.Restaurant;
+import com.socialflow.entity.*;
+import com.socialflow.exception.BadRequestException;
 import com.socialflow.exception.ResourceNotFoundException;
 import com.socialflow.exception.UnauthorizedException;
 import com.socialflow.repository.BranchRepository;
 import com.socialflow.repository.PostRepository;
 import com.socialflow.repository.RestaurantRepository;
+import com.socialflow.repository.ScheduledPostRepository;
 import com.socialflow.service.PostService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -27,6 +26,7 @@ public class PostServiceImpl implements PostService {
     private final PostRepository postRepository;
     private final RestaurantRepository restaurantRepository;
     private final BranchRepository branchRepository;
+    private final ScheduledPostRepository scheduledPostRepository;
 
     @Override
     public List<PostResponse> getAllPosts(String currentUserEmail, boolean isAdmin) {
@@ -54,6 +54,16 @@ public class PostServiceImpl implements PostService {
     @Override
     @Transactional
     public PostResponse createPost(PostRequest request, String currentUserEmail, boolean isAdmin) {
+        if (request.getTitle() == null || request.getTitle().trim().isEmpty()) {
+            throw new BadRequestException("Title is required");
+        }
+        if (request.getPlatform() == null) {
+            throw new BadRequestException("Platform is required");
+        }
+        if (request.getRestaurantId() == null) {
+            throw new BadRequestException("Restaurant ID is required");
+        }
+
         Restaurant restaurant = restaurantRepository.findById(request.getRestaurantId())
                 .orElseThrow(() -> new ResourceNotFoundException("Restaurant not found with id: " + request.getRestaurantId()));
 
@@ -65,6 +75,18 @@ public class PostServiceImpl implements PostService {
         if (request.getBranchId() != null) {
             branch = branchRepository.findById(request.getBranchId())
                     .orElseThrow(() -> new ResourceNotFoundException("Branch not found with id: " + request.getBranchId()));
+            if (!branch.getRestaurant().getId().equals(restaurant.getId())) {
+                throw new BadRequestException("Branch does not belong to the selected restaurant");
+            }
+        }
+
+        PostStatus status = request.getStatus() != null ? request.getStatus() : PostStatus.DRAFT;
+        LocalDateTime scheduledAt = request.getScheduledAt();
+
+        if (status == PostStatus.SCHEDULED && scheduledAt != null) {
+            if (scheduledAt.isBefore(LocalDateTime.now().minusMinutes(1))) {
+                throw new BadRequestException("Scheduled date/time must be in the future");
+            }
         }
 
         Post post = Post.builder()
@@ -75,11 +97,27 @@ public class PostServiceImpl implements PostService {
                 .platform(request.getPlatform())
                 .restaurant(restaurant)
                 .branch(branch)
-                .status(request.getStatus() != null ? request.getStatus() : PostStatus.DRAFT)
-                .scheduledAt(request.getScheduledAt())
+                .status(status)
+                .scheduledAt(scheduledAt)
                 .build();
 
-        return mapToPostResponse(postRepository.save(post));
+        Post savedPost = postRepository.save(post);
+
+        // Sync with scheduled_posts if scheduled
+        if (status == PostStatus.SCHEDULED && scheduledAt != null) {
+            ScheduledPost scheduledPost = ScheduledPost.builder()
+                    .post(savedPost)
+                    .restaurant(restaurant)
+                    .branch(branch)
+                    .platform(savedPost.getPlatform())
+                    .scheduledDateTime(scheduledAt)
+                    .timezone("UTC")
+                    .status(ScheduleStatus.SCHEDULED)
+                    .build();
+            scheduledPostRepository.save(scheduledPost);
+        }
+
+        return mapToPostResponse(savedPost);
     }
 
     @Override
@@ -92,15 +130,85 @@ public class PostServiceImpl implements PostService {
             throw new UnauthorizedException("Not authorized");
         }
 
-        if (request.getTitle() != null) post.setTitle(request.getTitle());
+        if (request.getTitle() != null) {
+            if (request.getTitle().trim().isEmpty()) {
+                throw new BadRequestException("Title cannot be empty");
+            }
+            post.setTitle(request.getTitle());
+        }
         if (request.getCaption() != null) post.setCaption(request.getCaption());
         if (request.getImageUrl() != null) post.setImageUrl(request.getImageUrl());
         if (request.getHashtags() != null) post.setHashtags(request.getHashtags());
         if (request.getPlatform() != null) post.setPlatform(request.getPlatform());
-        if (request.getStatus() != null) post.setStatus(request.getStatus());
-        if (request.getScheduledAt() != null) post.setScheduledAt(request.getScheduledAt());
 
-        return mapToPostResponse(postRepository.save(post));
+        if (request.getRestaurantId() != null) {
+            Restaurant restaurant = restaurantRepository.findById(request.getRestaurantId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Restaurant not found with id: " + request.getRestaurantId()));
+            if (!isAdmin && !restaurant.getOwner().getEmail().equalsIgnoreCase(currentUserEmail)) {
+                throw new UnauthorizedException("Not authorized");
+            }
+            post.setRestaurant(restaurant);
+        }
+
+        if (request.getBranchId() != null) {
+            Branch branch = branchRepository.findById(request.getBranchId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Branch not found with id: " + request.getBranchId()));
+            if (!branch.getRestaurant().getId().equals(post.getRestaurant().getId())) {
+                throw new BadRequestException("Branch does not belong to the selected restaurant");
+            }
+            post.setBranch(branch);
+        }
+
+        if (request.getStatus() != null) post.setStatus(request.getStatus());
+
+        if (request.getScheduledAt() != null) {
+            if ((post.getStatus() == PostStatus.SCHEDULED || request.getStatus() == PostStatus.SCHEDULED)
+                    && request.getScheduledAt().isBefore(LocalDateTime.now().minusMinutes(1))) {
+                throw new BadRequestException("Scheduled date/time must be in the future");
+            }
+            post.setScheduledAt(request.getScheduledAt());
+        }
+
+        Post savedPost = postRepository.save(post);
+
+        // Sync with scheduled_posts
+        List<ScheduledPost> existingSchedules = scheduledPostRepository.findByPostId(id);
+        if (savedPost.getStatus() == PostStatus.SCHEDULED && savedPost.getScheduledAt() != null) {
+            if (!existingSchedules.isEmpty()) {
+                ScheduledPost sp = existingSchedules.get(0);
+                sp.setPlatform(savedPost.getPlatform());
+                sp.setRestaurant(savedPost.getRestaurant());
+                sp.setBranch(savedPost.getBranch());
+                sp.setScheduledDateTime(savedPost.getScheduledAt());
+                sp.setStatus(ScheduleStatus.SCHEDULED);
+                scheduledPostRepository.save(sp);
+            } else {
+                ScheduledPost sp = ScheduledPost.builder()
+                        .post(savedPost)
+                        .restaurant(savedPost.getRestaurant())
+                        .branch(savedPost.getBranch())
+                        .platform(savedPost.getPlatform())
+                        .scheduledDateTime(savedPost.getScheduledAt())
+                        .timezone("UTC")
+                        .status(ScheduleStatus.SCHEDULED)
+                        .build();
+                scheduledPostRepository.save(sp);
+            }
+        } else if (savedPost.getStatus() == PostStatus.PUBLISHED) {
+            for (ScheduledPost sp : existingSchedules) {
+                sp.setStatus(ScheduleStatus.PUBLISHED);
+                scheduledPostRepository.save(sp);
+            }
+        } else if (savedPost.getStatus() == PostStatus.CANCELLED) {
+            for (ScheduledPost sp : existingSchedules) {
+                sp.setStatus(ScheduleStatus.CANCELLED);
+                scheduledPostRepository.save(sp);
+            }
+        } else if (savedPost.getStatus() == PostStatus.DRAFT) {
+            scheduledPostRepository.deleteByPostId(id);
+        }
+
+        return mapToPostResponse(savedPost);
     }
 
     @Override
@@ -113,6 +221,8 @@ public class PostServiceImpl implements PostService {
             throw new UnauthorizedException("Not authorized");
         }
 
+        // Delete any related scheduled posts first to avoid foreign key constraints / orphan rows
+        scheduledPostRepository.deleteByPostId(id);
         postRepository.delete(post);
     }
 
@@ -137,11 +247,48 @@ public class PostServiceImpl implements PostService {
             throw new UnauthorizedException("Not authorized");
         }
 
-        post.setStatus(PostStatus.SCHEDULED);
+        LocalDateTime parsed = null;
         if (scheduledAt != null) {
-            post.setScheduledAt(LocalDateTime.parse(scheduledAt));
+            parsed = LocalDateTime.parse(scheduledAt);
+            if (parsed.isBefore(LocalDateTime.now().minusMinutes(1))) {
+                throw new BadRequestException("Scheduled date/time must be in the future");
+            }
+            post.setScheduledAt(parsed);
+        } else if (post.getScheduledAt() != null) {
+            parsed = post.getScheduledAt();
+            if (parsed.isBefore(LocalDateTime.now().minusMinutes(1))) {
+                throw new BadRequestException("Scheduled date/time must be in the future");
+            }
+        } else {
+            throw new BadRequestException("Scheduled date/time is required");
         }
-        return mapToPostResponse(postRepository.save(post));
+
+        post.setStatus(PostStatus.SCHEDULED);
+        Post saved = postRepository.save(post);
+
+        List<ScheduledPost> existingSchedules = scheduledPostRepository.findByPostId(id);
+        if (!existingSchedules.isEmpty()) {
+            ScheduledPost sp = existingSchedules.get(0);
+            sp.setScheduledDateTime(parsed);
+            sp.setPlatform(saved.getPlatform());
+            sp.setRestaurant(saved.getRestaurant());
+            sp.setBranch(saved.getBranch());
+            sp.setStatus(ScheduleStatus.SCHEDULED);
+            scheduledPostRepository.save(sp);
+        } else {
+            ScheduledPost sp = ScheduledPost.builder()
+                    .post(saved)
+                    .restaurant(saved.getRestaurant())
+                    .branch(saved.getBranch())
+                    .platform(saved.getPlatform())
+                    .scheduledDateTime(parsed)
+                    .timezone("UTC")
+                    .status(ScheduleStatus.SCHEDULED)
+                    .build();
+            scheduledPostRepository.save(sp);
+        }
+
+        return mapToPostResponse(saved);
     }
 
     @Override
@@ -155,7 +302,15 @@ public class PostServiceImpl implements PostService {
         }
 
         post.setStatus(PostStatus.CANCELLED);
-        return mapToPostResponse(postRepository.save(post));
+        Post saved = postRepository.save(post);
+
+        List<ScheduledPost> existingSchedules = scheduledPostRepository.findByPostId(id);
+        for (ScheduledPost sp : existingSchedules) {
+            sp.setStatus(ScheduleStatus.CANCELLED);
+            scheduledPostRepository.save(sp);
+        }
+
+        return mapToPostResponse(saved);
     }
 
     private PostResponse mapToPostResponse(Post p) {

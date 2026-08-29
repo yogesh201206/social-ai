@@ -1,46 +1,51 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { restaurants as initialRestaurants } from '../data/restaurantData'
+import { useAuth } from './AuthContext'
 import restaurantService from '../services/restaurantService'
 
 const RestaurantContext = createContext()
 
 export function RestaurantProvider({ children }) {
-  const [restaurants, setRestaurants] = useState(initialRestaurants)
+  const { token } = useAuth()
+  const [restaurants, setRestaurants] = useState([])
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
+  const fetchRestaurants = useCallback(async () => {
     setLoading(true)
-    restaurantService.getAll()
-      .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          const formatted = data.map(r => ({
-            id: String(r.id),
-            name: r.name,
-            category: r.category || 'Restaurant',
-            location: r.address || 'Downtown',
-            phone: r.phone || '',
-            email: r.email || '',
-            status: r.status || 'Active',
-            branchCount: r.branches ? r.branches.length : 0,
-            branches: r.branches ? r.branches.map(b => ({
-              id: String(b.id),
-              name: b.branchName || b.name || '',
-              branchName: b.branchName || b.name || '',
-              city: b.city || '',
-              address: b.address || '',
-              phone: b.phone || '',
-              status: b.status || 'ACTIVE'
-            })) : [],
-            createdAt: r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
-          }))
-          setRestaurants(formatted)
-        }
-      })
-      .catch((err) => {
-        console.log('Using fallback mock data for restaurants:', err.message)
-      })
-      .finally(() => setLoading(false))
+    try {
+      const data = await restaurantService.getAll()
+      if (Array.isArray(data)) {
+        const formatted = data.map(r => ({
+          id: String(r.id),
+          name: r.name,
+          category: r.category || 'Restaurant',
+          location: r.address || 'Downtown',
+          phone: r.phone || '',
+          email: r.email || '',
+          status: r.status || 'Active',
+          branchCount: r.branches ? r.branches.length : 0,
+          branches: r.branches ? r.branches.map(b => ({
+            id: String(b.id),
+            name: b.branchName || b.name || '',
+            branchName: b.branchName || b.name || '',
+            city: b.city || '',
+            address: b.address || '',
+            phone: b.phone || '',
+            status: b.status || 'ACTIVE'
+          })) : [],
+          createdAt: r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
+        }))
+        setRestaurants(formatted)
+      }
+    } catch (err) {
+      console.warn('[RestaurantContext fetch error]:', err.message)
+    } finally {
+      setLoading(false)
+    }
   }, [])
+
+  useEffect(() => {
+    fetchRestaurants()
+  }, [fetchRestaurants, token])
 
   const addRestaurant = useCallback(async (restaurant) => {
     try {
@@ -234,6 +239,8 @@ const deleteRestaurant = useCallback(async (id) => {
   value={{
     restaurants,
     loading,
+    fetchRestaurants,
+    refreshRestaurants: fetchRestaurants,
     addRestaurant,
     updateRestaurant,
     addBranch,

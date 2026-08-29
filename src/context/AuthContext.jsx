@@ -10,20 +10,14 @@ export function AuthProvider({ children }) {
     if (saved) {
       try { return JSON.parse(saved) } catch (e) { return null }
     }
-    return {
-      id: 1,
-      name: 'Alex Johnson',
-      email: 'user@socialflow.ai',
-      role: 'USER',
-      businessName: 'Bella Italia Group',
-    }
+    return null
   })
   const [token, setToken] = useState(() => getAuthToken())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    if (token && !user) {
+    if (token) {
       authService.getCurrentUser()
         .then(u => {
           if (u) {
@@ -31,7 +25,13 @@ export function AuthProvider({ children }) {
             localStorage.setItem('socialflow_user', JSON.stringify(u))
           }
         })
-        .catch(() => {})
+        .catch(() => {
+          setUser(null)
+          setToken('')
+          authService.logout()
+        })
+    } else {
+      setUser(null)
     }
   }, [token])
 

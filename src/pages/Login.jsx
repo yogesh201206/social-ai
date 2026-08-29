@@ -29,12 +29,7 @@ export default function Login() {
       }
     } catch (err) {
       setLoading(false)
-      // Fallback redirect for offline demo mode
-      if (form.email.includes('admin')) {
-        navigate('/admin')
-      } else {
-        navigate('/dashboard')
-      }
+      setError(err.message || 'Login failed. Please check your credentials.')
     }
   }
 
@@ -144,9 +139,16 @@ export default function Login() {
                   variant="secondary"
                   size="sm"
                   className="w-1/2 text-xs"
-                  onClick={() => {
+                  onClick={async () => {
                     setForm({ email: 'user@socialflow.ai', password: 'password123', remember: true })
-                    login('user@socialflow.ai', 'password123').catch(() => {}).finally(() => navigate('/dashboard'))
+                    setError('')
+                    try {
+                      const res = await login('user@socialflow.ai', 'password123')
+                      if (res?.user?.role === 'ADMIN') navigate('/admin')
+                      else navigate('/dashboard')
+                    } catch (err) {
+                      setError(err.message || 'Login failed')
+                    }
                   }}
                 >
                   User Login
@@ -156,9 +158,16 @@ export default function Login() {
                   variant="outline"
                   size="sm"
                   className="w-1/2 text-xs"
-                  onClick={() => {
+                  onClick={async () => {
                     setForm({ email: 'admin@socialflow.ai', password: 'adminpassword', remember: true })
-                    login('admin@socialflow.ai', 'adminpassword').catch(() => {}).finally(() => navigate('/admin'))
+                    setError('')
+                    try {
+                      const res = await login('admin@socialflow.ai', 'adminpassword')
+                      if (res?.user?.role === 'ADMIN') navigate('/admin')
+                      else navigate('/dashboard')
+                    } catch (err) {
+                      setError(err.message || 'Login failed')
+                    }
                   }}
                 >
                   Admin Login

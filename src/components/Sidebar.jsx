@@ -1,12 +1,15 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { LogOut, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
 export default function Sidebar({ links, isCollapsed, onToggleCollapse }) {
   const location = useLocation()
   const navigate = useNavigate()
+  const { logout } = useAuth()
 
   const handleLogout = () => {
+    logout()
     navigate('/login')
   }
 

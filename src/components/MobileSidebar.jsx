@@ -1,12 +1,15 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import * as Icons from 'lucide-react'
 import { LogOut, X } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
 export default function MobileSidebar({ links, isOpen, onClose }) {
   const location = useLocation()
   const navigate = useNavigate()
+  const { logout } = useAuth()
 
   const handleLogout = () => {
+    logout()
     onClose()
     navigate('/login')
   }

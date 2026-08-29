@@ -3,13 +3,14 @@ import { useNavigate, Link } from 'react-router-dom'
 import { Menu, Bell, Moon, Sun, User, Settings, LogOut, CheckCheck, Trash2, ShieldCheck } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 import { useNotifications } from '../context/NotificationContext'
-import { userProfile } from '../data/dashboardData'
+import { useAuth } from '../context/AuthContext'
 import SearchBar from './SearchBar'
 import NotificationCard from './NotificationCard'
 
 export default function DashboardTopbar({ title, onMenuClick }) {
   const { darkMode, toggleDarkMode } = useTheme()
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearAll } = useNotifications()
+  const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [showNotifications, setShowNotifications] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
@@ -30,6 +31,7 @@ export default function DashboardTopbar({ title, onMenuClick }) {
   }, [])
 
   const handleLogout = () => {
+    logout()
     navigate('/login')
   }
 
@@ -138,18 +140,20 @@ export default function DashboardTopbar({ title, onMenuClick }) {
               className="flex items-center gap-2 pl-2 border-l border-gray-200 dark:border-gray-700"
             >
               <div className="h-8 w-8 rounded-full gradient-bg flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-bold text-white">{userProfile.avatar}</span>
+                <span className="text-xs font-bold text-white">
+                  {user?.name ? user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'U'}
+                </span>
               </div>
               <span className="hidden md:block text-sm font-medium text-gray-700 dark:text-gray-300">
-                {userProfile.name}
+                {user?.name || 'User'}
               </span>
             </button>
 
             {showProfile && (
               <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 animate-fade-in overflow-hidden">
                 <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{userProfile.name}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">{userProfile.email}</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{user?.name || 'User'}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{user?.email || ''}</p>
                 </div>
                 <div className="p-2">
                   <Link

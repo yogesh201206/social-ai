@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { useAuth } from './AuthContext'
 import postService from '../services/postService'
 
 const PostContext = createContext()
@@ -49,6 +50,7 @@ function mapPostFromBackend(p) {
 }
 
 export function PostProvider({ children }) {
+  const { token } = useAuth()
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(false)
 
@@ -68,7 +70,7 @@ export function PostProvider({ children }) {
 
   useEffect(() => {
     refreshPosts()
-  }, [refreshPosts])
+  }, [refreshPosts, token])
 
   const getPost = useCallback((id) => posts.find((p) => String(p.id) === String(id)), [posts])
 

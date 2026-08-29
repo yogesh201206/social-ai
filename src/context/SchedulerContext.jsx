@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
+import { useAuth } from './AuthContext'
 import schedulerService from '../services/schedulerService'
 
 function formatDisplayDate(dateStr) {
@@ -63,6 +64,7 @@ function mapScheduleFromBackend(s) {
 const SchedulerContext = createContext()
 
 export function SchedulerProvider({ children }) {
+  const { token } = useAuth()
   const [scheduledPosts, setScheduledPosts] = useState([])
   const [loading, setLoading] = useState(false)
 
@@ -82,7 +84,7 @@ export function SchedulerProvider({ children }) {
 
   useEffect(() => {
     refreshScheduledPosts()
-  }, [refreshScheduledPosts])
+  }, [refreshScheduledPosts, token])
 
   const addScheduledPost = useCallback(async (post) => {
     const scheduledDateTime = post.scheduledDateTime || `${post.scheduledDate}T${post.scheduledTimeInput || '18:00'}:00`

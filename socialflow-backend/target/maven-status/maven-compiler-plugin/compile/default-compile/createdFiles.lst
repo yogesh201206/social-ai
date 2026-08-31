@@ -3,6 +3,7 @@ com/socialflow/security/UserPrincipal.class
 com/socialflow/entity/ContentType.class
 com/socialflow/service/AdminService.class
 com/socialflow/dto/RestaurantResponse$RestaurantResponseBuilder.class
+com/socialflow/service/publisher/LinkedInPublisher.class
 com/socialflow/entity/User.class
 com/socialflow/entity/Role.class
 com/socialflow/entity/Restaurant$RestaurantBuilder.class
@@ -116,3 +117,4 @@ com/socialflow/controller/EmailCampaignController.class
 com/socialflow/repository/AnalyticsRepository.class
 com/socialflow/dto/ScheduleResponse.class
 com/socialflow/controller/SchedulerController.class
+com/socialflow/config/SocialPlatformConfig$LinkedInConfig.class

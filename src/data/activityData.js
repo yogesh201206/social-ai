@@ -34,7 +34,7 @@ export const activities = [
   {
     id: 5,
     action: 'Post published',
-    description: 'Chef\'s Special Friday – TikTok is now live',
+    description: 'Chef\'s Special Friday – LinkedIn post is now live',
     timestamp: '3 hours ago',
     icon: 'Send',
     type: 'publish',

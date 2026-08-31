@@ -151,7 +151,7 @@ export default function Analytics() {
                 Platform Performance Comparison
               </h3>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Comparative metrics across Instagram, Facebook, X, TikTok & YouTube
+                Comparative metrics across X, LinkedIn, YouTube & connected platforms
               </p>
             </div>
             <Link

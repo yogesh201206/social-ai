@@ -117,7 +117,7 @@ export default function AIContentGenerator() {
       facebook: 'FACEBOOK',
       twitter: 'TWITTER',
       x: 'TWITTER',
-      tiktok: 'TIKTOK',
+      linkedin: 'LINKEDIN',
       youtube: 'YOUTUBE',
     }
     return map[platform.toLowerCase()] || null
@@ -129,7 +129,7 @@ export default function AIContentGenerator() {
       title: `${input.restaurantName || restaurant?.name || 'Restaurant'} — ${input.contentType || 'AI Post'}`,
       caption: result?.generatedContent || result?.caption || '',
       image: image?.preview || null,
-      platform: mapPlatform(input.platform) || 'INSTAGRAM',
+      platform: mapPlatform(input.platform) || 'TWITTER',
       status: 'DRAFT',
       restaurantId: restaurant?.id || null,
       restaurantName: restaurant?.name || input.restaurantName,

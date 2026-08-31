@@ -278,16 +278,20 @@ export function AnalyticsProvider({ children }) {
       Facebook: 'from-blue-600 to-blue-700',
       'X / Twitter': 'from-gray-800 to-gray-900',
       Twitter: 'from-gray-800 to-gray-900',
-      Tiktok: 'from-gray-900 to-black',
+      Linkedin: 'from-blue-500 to-blue-700',
+      LinkedIn: 'from-blue-500 to-blue-700',
       Youtube: 'from-red-600 to-red-700',
+      YouTube: 'from-red-600 to-red-700',
     }
     const badgeMap = {
       Instagram: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
       Facebook: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
       Twitter: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
       'X / Twitter': 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
-      Tiktok: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300',
+      Linkedin: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+      LinkedIn: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
       Youtube: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+      YouTube: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     }
     const formatK = (val) => (val >= 1000 ? `${(val / 1000).toFixed(1)}K` : String(val || 0))
 

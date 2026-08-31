@@ -198,10 +198,9 @@ export default function SettingsPanel() {
               </div>
             ) : (
               <div className="space-y-3">
-                {[{p:'INSTAGRAM',label:'Instagram',color:'from-pink-500 to-purple-500'},
-                  {p:'FACEBOOK',label:'Facebook',color:'from-blue-600 to-blue-700'},
-                  {p:'TWITTER',label:'X (Twitter)',color:'from-gray-800 to-gray-900'},
-                  {p:'TIKTOK',label:'TikTok',color:'from-gray-900 to-pink-600'},
+                {/* Active platforms — Real OAuth connection */}
+                {[{p:'TWITTER',label:'X (Twitter)',color:'from-gray-800 to-gray-900'},
+                  {p:'LINKEDIN',label:'LinkedIn',color:'from-blue-500 to-blue-700'},
                   {p:'YOUTUBE',label:'YouTube',color:'from-red-600 to-red-700'},
                 ].map(({p, label, color}) => {
                   const account = socialAccounts.find(a => a.platform === p)
@@ -225,14 +224,24 @@ export default function SettingsPanel() {
                         </div>
                       </div>
                       {account?.isConnected ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDisconnect(account.id)}
-                        >
-                          <XCircle className="h-3.5 w-3.5" />
-                          Disconnect
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleConnect(p)}
+                            title="Reconnect"
+                          >
+                            Reconnect
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDisconnect(account.id)}
+                          >
+                            <XCircle className="h-3.5 w-3.5" />
+                            Disconnect
+                          </Button>
+                        </div>
                       ) : (
                         <Button
                           size="sm"
@@ -245,6 +254,35 @@ export default function SettingsPanel() {
                     </div>
                   )
                 })}
+
+                {/* Coming Soon platforms — Instagram & Facebook */}
+                {[{p:'INSTAGRAM',label:'Instagram',color:'from-pink-500 to-purple-500'},
+                  {p:'FACEBOOK',label:'Facebook',color:'from-blue-600 to-blue-700'},
+                ].map(({p, label, color}) => (
+                  <div key={p} className="flex items-center justify-between p-4 rounded-xl border border-gray-100 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/30">
+                    <div className="flex items-center gap-3">
+                      <div className={`h-9 w-9 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center opacity-60`}>
+                        <Link2 className="h-4 w-4 text-white" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</p>
+                          <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-200 dark:border-amber-700/50">
+                            Coming Soon
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-400">Integration not enabled yet</p>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      disabled
+                      className="opacity-40 cursor-not-allowed pointer-events-none"
+                    >
+                      Connect
+                    </Button>
+                  </div>
+                ))}
               </div>
             )}
           </div>

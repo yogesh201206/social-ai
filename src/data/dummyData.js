@@ -3,7 +3,7 @@ export const features = [
     icon: 'Sparkles',
     title: 'AI Caption Generator',
     description:
-      'Create engaging, on-brand captions for Instagram, Facebook, and TikTok in seconds with our AI-powered writing assistant.',
+      'Create engaging, on-brand captions for X, LinkedIn, and YouTube in seconds with our AI-powered writing assistant.',
   },
   {
     icon: 'Calendar',
@@ -135,7 +135,7 @@ export const faqs = [
   {
     question: 'What social media platforms do you support?',
     answer:
-      'SocialFlow AI supports Instagram, Facebook, TikTok, Twitter/X, and LinkedIn. We are constantly adding new platform integrations.',
+      'SocialFlow AI supports X (Twitter), LinkedIn, and YouTube, with Instagram and Facebook integrations coming soon. We are constantly adding new platform integrations.',
   },
   {
     question: 'Can I manage multiple restaurant locations?',
@@ -198,7 +198,7 @@ export const recentActivities = [
   {
     id: 5,
     action: 'Post published',
-    detail: 'Chef\'s Special Friday – TikTok',
+    detail: 'Chef\'s Special Friday – LinkedIn',
     time: '5 hours ago',
     icon: 'Send',
   },

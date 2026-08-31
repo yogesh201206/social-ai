@@ -12,7 +12,7 @@ import { userProfile } from '../../data/dashboardData'
 const defaultForm = {
   title: '',
   caption: '',
-  platform: 'Instagram',
+  platform: 'Twitter(X)',
   hashtags: '',
   cta: '',
   restaurantId: '',
@@ -164,7 +164,13 @@ export default function CreatePost() {
     if (!form.title.trim()) newErrors.title = 'Post title is required'
     if (!form.caption.trim()) newErrors.caption = 'Caption is required'
     if (charCount > charLimit) newErrors.caption = `Caption exceeds ${charLimit.toLocaleString()} character limit`
-    if (!form.platform) newErrors.platform = 'Please select a platform'
+    if (!form.platform) {
+      newErrors.platform = 'Please select a platform'
+    } else if (['Instagram', 'Facebook'].includes(form.platform)) {
+      newErrors.platform = `${form.platform} integration is coming soon. Please select an active platform (X, LinkedIn, or YouTube).`
+    } else if (form.platform === 'YouTube' && !image?.preview) {
+      newErrors.image = 'YouTube publishing requires a video or media file.'
+    }
     if (!form.restaurantId) newErrors.restaurantId = 'Please select a restaurant'
 
     if (forSchedule || showSchedule) {

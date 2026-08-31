@@ -102,36 +102,39 @@ function TwitterPreview({ post }) {
   )
 }
 
-function TikTokPreview({ post }) {
+function LinkedInPreview({ post }) {
   return (
-    <div className="relative bg-black rounded-2xl overflow-hidden max-w-[280px] mx-auto shadow-xl aspect-[9/16]">
-      <img src={post.image} alt="" className="w-full h-full object-cover opacity-80" />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/30" />
-      <div className="absolute bottom-0 left-0 right-0 p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <img src={post.restaurantLogo} alt="" className="h-8 w-8 rounded-full object-cover border border-white" />
-          <span className="text-white text-sm font-semibold">@{post.restaurantName.replace(/\s/g, '').toLowerCase()}</span>
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden max-w-md mx-auto shadow-xl">
+      <div className="p-4 flex items-center gap-3 border-b border-gray-100 dark:border-gray-800">
+        <img src={post.restaurantLogo} alt="" className="h-11 w-11 rounded-lg object-cover ring-1 ring-blue-500/20" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{post.restaurantName}</p>
+          <p className="text-xs text-gray-500 truncate">Hospitality & Food Services · 1h · 🌐</p>
         </div>
-        <p className="text-white text-xs line-clamp-3">{post.caption}</p>
+        <MoreHorizontal className="h-5 w-5 text-gray-400" />
+      </div>
+      <div className="p-4">
+        <p className="text-sm text-gray-900 dark:text-white whitespace-pre-line mb-3">{post.caption}</p>
         {post.hashtags?.length > 0 && (
-          <p className="text-white/80 text-xs mt-1">{post.hashtags.slice(0, 3).join(' ')}</p>
+          <p className="text-sm text-blue-600 dark:text-blue-400 mb-3">{Array.isArray(post.hashtags) ? post.hashtags.join(' ') : post.hashtags}</p>
         )}
       </div>
-      <div className="absolute right-3 bottom-20 flex flex-col items-center gap-4">
-        <div className="flex flex-col items-center">
-          <Heart className="h-6 w-6 text-white" />
-          <span className="text-white text-xs mt-1">2.4K</span>
-        </div>
-        <div className="flex flex-col items-center">
-          <MessageCircle className="h-6 w-6 text-white" />
-          <span className="text-white text-xs mt-1">128</span>
-        </div>
-        <Share2 className="h-6 w-6 text-white" />
-      </div>
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="h-14 w-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center">
-          <Play className="h-7 w-7 text-white fill-white" />
-        </div>
+      {post.image && (
+        <img src={post.image} alt="" className="w-full aspect-video object-cover" />
+      )}
+      <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-gray-500 text-xs">
+        <button className="flex items-center gap-1.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors font-medium">
+          <ThumbsUp className="h-4 w-4" /> Like
+        </button>
+        <button className="flex items-center gap-1.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors font-medium">
+          <MessageCircle className="h-4 w-4" /> Comment
+        </button>
+        <button className="flex items-center gap-1.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors font-medium">
+          <Repeat2 className="h-4 w-4" /> Repost
+        </button>
+        <button className="flex items-center gap-1.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors font-medium">
+          <Send className="h-4 w-4" /> Send
+        </button>
       </div>
     </div>
   )
@@ -150,7 +153,7 @@ function YouTubePreview({ post }) {
       <div className="p-4">
         <p className="text-sm text-gray-900 dark:text-white mb-3">{post.caption}</p>
         {post.hashtags?.length > 0 && (
-          <p className="text-sm text-blue-600 dark:text-blue-400 mb-3">{post.hashtags.join(' ')}</p>
+          <p className="text-sm text-blue-600 dark:text-blue-400 mb-3">{Array.isArray(post.hashtags) ? post.hashtags.join(' ') : post.hashtags}</p>
         )}
         <img src={post.image} alt="" className="w-full rounded-xl aspect-video object-cover" />
         {post.cta && (
@@ -178,13 +181,13 @@ const previewComponents = {
   Instagram: InstagramPreview,
   Facebook: FacebookPreview,
   'Twitter(X)': TwitterPreview,
-  TikTok: TikTokPreview,
+  LinkedIn: LinkedInPreview,
   YouTube: YouTubePreview,
 }
 
 export default function PostPreview({ post, platform }) {
   const activePlatform = platform || post.platform
-  const PreviewComponent = previewComponents[activePlatform] || InstagramPreview
+  const PreviewComponent = previewComponents[activePlatform] || LinkedInPreview
   const PlatformIcon = Icons[platformIcons[activePlatform]] || Icons.Globe
 
   return (
@@ -199,7 +202,7 @@ export default function PostPreview({ post, platform }) {
 }
 
 export function PostPreviewGrid({ post }) {
-  const platforms = ['Instagram', 'Facebook', 'Twitter(X)', 'TikTok', 'YouTube']
+  const platforms = ['Instagram', 'Facebook', 'Twitter(X)', 'LinkedIn', 'YouTube']
 
   return (
     <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-8">

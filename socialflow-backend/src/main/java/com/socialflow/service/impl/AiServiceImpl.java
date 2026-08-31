@@ -207,7 +207,7 @@ public class AiServiceImpl implements AiService {
                 case INSTAGRAM -> sb.append("Optimize for Instagram: use emojis, max 2200 chars, include hashtag block.\n");
                 case FACEBOOK -> sb.append("Optimize for Facebook: conversational tone, can be longer, include a question.\n");
                 case TWITTER -> sb.append("Optimize for X/Twitter: concise, max 280 characters, punchy.\n");
-                case TIKTOK -> sb.append("Optimize for TikTok: trendy, energetic, include video hook idea.\n");
+                case LINKEDIN -> sb.append("Optimize for LinkedIn: professional, engaging tone, business milestones or industry hashtags, max 3000 chars.\n");
                 case YOUTUBE -> sb.append("Optimize for YouTube: include description, keywords, and CTA to subscribe.\n");
             }
         }

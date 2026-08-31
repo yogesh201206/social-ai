@@ -32,8 +32,8 @@ public class SocialAccountServiceImpl implements SocialAccountService {
     private final RestaurantRepository restaurantRepository;
     private final SocialPlatformConfig.MetaConfig metaConfig;
     private final SocialPlatformConfig.XConfig xConfig;
-    private final SocialPlatformConfig.TikTokConfig tikTokConfig;
     private final SocialPlatformConfig.GoogleConfig googleConfig;
+    private final SocialPlatformConfig.LinkedInConfig linkedInConfig;
     private final RestClient restClient;
 
     @Override
@@ -48,6 +48,14 @@ public class SocialAccountServiceImpl implements SocialAccountService {
     @Transactional
     public Map<String, String> initiateConnect(String platformStr, Long restaurantId, String currentUserEmail) {
         Platform platform = parsePlatform(platformStr);
+
+        // Block Instagram / Facebook — Coming Soon
+        if (platform == Platform.INSTAGRAM || platform == Platform.FACEBOOK) {
+            throw new BadRequestException(
+                    platform.name() + " integration is coming soon. " +
+                    "Social account connection has not been enabled yet. " +
+                    "Please check back after Meta Business verification is complete.");
+        }
 
         // Validate restaurant ownership
         Restaurant restaurant = restaurantRepository.findById(restaurantId)
@@ -139,9 +147,9 @@ public class SocialAccountServiceImpl implements SocialAccountService {
     private String buildOAuthUrl(Platform platform, String state, Long restaurantId) {
         return switch (platform) {
             case INSTAGRAM, FACEBOOK -> buildMetaOAuthUrl(platform, state, restaurantId);
-            case TWITTER -> buildXOAuthUrl(state, restaurantId);
-            case TIKTOK -> buildTikTokOAuthUrl(state, restaurantId);
-            case YOUTUBE -> buildGoogleOAuthUrl(state, restaurantId);
+            case TWITTER  -> buildXOAuthUrl(state, restaurantId);
+            case YOUTUBE  -> buildGoogleOAuthUrl(state, restaurantId);
+            case LINKEDIN -> buildLinkedInOAuthUrl(state, restaurantId);
         };
     }
 
@@ -181,21 +189,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                "&code_challenge_method=plain";
     }
 
-    private String buildTikTokOAuthUrl(String state, Long restaurantId) {
-        if (isBlank(tikTokConfig.getClientKey()) || isBlank(tikTokConfig.getClientSecret())) {
-            throw new BadRequestException(
-                    "CONFIGURATION REQUIRED: TikTok client credentials are not configured. " +
-                    "Please set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET environment variables. " +
-                    "Register your app at https://developers.tiktok.com/");
-        }
-        return "https://www.tiktok.com/v2/auth/authorize/" +
-               "?client_key=" + encode(tikTokConfig.getClientKey()) +
-               "&scope=" + encode("user.info.basic,video.publish") +
-               "&response_type=code" +
-               "&redirect_uri=" + encode(tikTokConfig.getRedirectUri()) +
-               "&state=" + encode(state + ":" + restaurantId);
-    }
-
     private String buildGoogleOAuthUrl(String state, Long restaurantId) {
         if (isBlank(googleConfig.getClientId()) || isBlank(googleConfig.getClientSecret())) {
             throw new BadRequestException(
@@ -212,14 +205,42 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                "&state=" + encode(state + ":" + restaurantId);
     }
 
+    /**
+     * Builds LinkedIn OAuth 2.0 authorization URL.
+     *
+     * LinkedIn OAuth 2.0 with PKCE (recommended) or standard auth code flow.
+     * Required scopes (as of 2024-2026 LinkedIn API):
+     *   - openid     : OpenID Connect — identify the member
+     *   - profile    : Read basic profile info (name, picture)
+     *   - w_member_social : Post, comment, and like on behalf of the member
+     *
+     * NOTE: LinkedIn no longer requires r_liteprofile/r_emailaddress for basic posting.
+     * The "Share on LinkedIn" product must be added in the developer portal.
+     */
+    private String buildLinkedInOAuthUrl(String state, Long restaurantId) {
+        if (isBlank(linkedInConfig.getClientId()) || isBlank(linkedInConfig.getClientSecret())) {
+            throw new BadRequestException(
+                    "CONFIGURATION REQUIRED: LinkedIn client credentials are not configured. " +
+                    "Please set LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET environment variables. " +
+                    "Register your app at https://www.linkedin.com/developers/apps and add " +
+                    "'Share on LinkedIn' product to get w_member_social scope.");
+        }
+        return "https://www.linkedin.com/oauth/v2/authorization" +
+               "?response_type=code" +
+               "&client_id=" + encode(linkedInConfig.getClientId()) +
+               "&redirect_uri=" + encode(linkedInConfig.getRedirectUri()) +
+               "&scope=" + encode("openid profile w_member_social") +
+               "&state=" + encode(state + ":" + restaurantId);
+    }
+
     // ─── Token Exchange ──────────────────────────────────────────────────────────
 
     private TokenResult exchangeCodeForTokens(Platform platform, String code, Long restaurantId) {
         return switch (platform) {
             case INSTAGRAM, FACEBOOK -> exchangeMetaTokens(code);
-            case TWITTER -> exchangeXTokens(code);
-            case TIKTOK -> exchangeTikTokTokens(code);
-            case YOUTUBE -> exchangeGoogleTokens(code);
+            case TWITTER  -> exchangeXTokens(code);
+            case YOUTUBE  -> exchangeGoogleTokens(code);
+            case LINKEDIN -> exchangeLinkedInTokens(code);
         };
     }
 
@@ -286,52 +307,32 @@ public class SocialAccountServiceImpl implements SocialAccountService {
             String accessToken = (String) response.get("access_token");
             String refreshToken = (String) response.get("refresh_token");
 
-            return new TokenResult(accessToken, refreshToken, null, "X Account", null);
+            // Fetch X user info to get handle
+            Map<String, Object> userResponse = null;
+            try {
+                userResponse = restClient.get()
+                        .uri("https://api.twitter.com/2/users/me")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .retrieve()
+                        .body(Map.class);
+            } catch (Exception ex) {
+                log.warn("[Social] Could not fetch X user info: {}", ex.getMessage());
+            }
+
+            String accountName = "X Account";
+            String platformAccountId = null;
+            if (userResponse != null) {
+                Map<String, Object> data = (Map<String, Object>) userResponse.get("data");
+                if (data != null) {
+                    accountName = "@" + data.getOrDefault("username", "xaccount");
+                    platformAccountId = (String) data.get("id");
+                }
+            }
+
+            return new TokenResult(accessToken, refreshToken, null, accountName, platformAccountId);
         } catch (Exception e) {
             log.warn("[Social] X token exchange failed: {}", e.getMessage());
             throw new BadRequestException("Failed to exchange X authorization code: " + e.getMessage());
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private TokenResult exchangeTikTokTokens(String code) {
-        if (isBlank(tikTokConfig.getClientKey())) {
-            throw new BadRequestException("CONFIGURATION REQUIRED: TikTok credentials not configured.");
-        }
-        try {
-            Map<String, Object> requestBody = Map.of(
-                    "client_key", tikTokConfig.getClientKey(),
-                    "client_secret", tikTokConfig.getClientSecret(),
-                    "code", code,
-                    "grant_type", "authorization_code",
-                    "redirect_uri", tikTokConfig.getRedirectUri()
-            );
-
-            Map<String, Object> response = restClient.post()
-                    .uri("https://open.tiktokapis.com/v2/oauth/token/")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(requestBody)
-                    .retrieve()
-                    .body(Map.class);
-
-            Map<String, Object> data = (Map<String, Object>) response.get("data");
-            if (data == null) throw new BadRequestException("TikTok returned empty token data");
-
-            String accessToken = (String) data.get("access_token");
-            String refreshToken = (String) data.get("refresh_token");
-            Integer expiresIn = (Integer) data.get("expires_in");
-            String openId = (String) data.get("open_id");
-
-            return new TokenResult(
-                    accessToken, refreshToken,
-                    expiresIn != null ? LocalDateTime.now().plusSeconds(expiresIn) : null,
-                    "TikTok Account", openId
-            );
-        } catch (BadRequestException e) {
-            throw e;
-        } catch (Exception e) {
-            log.warn("[Social] TikTok token exchange failed: {}", e.getMessage());
-            throw new BadRequestException("Failed to exchange TikTok authorization code: " + e.getMessage());
         }
     }
 
@@ -359,14 +360,132 @@ public class SocialAccountServiceImpl implements SocialAccountService {
             String refreshToken = (String) response.get("refresh_token");
             Integer expiresIn = (Integer) response.get("expires_in");
 
+            // Fetch YouTube channel name
+            String channelName = "YouTube Channel";
+            String channelId = null;
+            try {
+                Map<String, Object> channelResponse = restClient.get()
+                        .uri("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .retrieve()
+                        .body(Map.class);
+
+                List<Map<String, Object>> items = (List<Map<String, Object>>) channelResponse.get("items");
+                if (items != null && !items.isEmpty()) {
+                    Map<String, Object> channel = items.get(0);
+                    channelId = (String) channel.get("id");
+                    Map<String, Object> snippet = (Map<String, Object>) channel.get("snippet");
+                    if (snippet != null) {
+                        channelName = (String) snippet.getOrDefault("title", "YouTube Channel");
+                    }
+                }
+            } catch (Exception ex) {
+                log.warn("[Social] Could not fetch YouTube channel info: {}", ex.getMessage());
+            }
+
             return new TokenResult(
                     accessToken, refreshToken,
                     expiresIn != null ? LocalDateTime.now().plusSeconds(expiresIn) : null,
-                    "YouTube Channel", null
+                    channelName, channelId
             );
         } catch (Exception e) {
             log.warn("[Social] Google token exchange failed: {}", e.getMessage());
             throw new BadRequestException("Failed to exchange Google authorization code: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Exchanges LinkedIn authorization code for access token.
+     *
+     * LinkedIn OAuth 2.0 token endpoint:
+     *   POST https://www.linkedin.com/oauth/v2/accessToken
+     *
+     * After getting the token, fetches the member's profile (urn:li:person:{id})
+     * using the OpenID Connect userinfo endpoint or profile API.
+     */
+    @SuppressWarnings("unchecked")
+    private TokenResult exchangeLinkedInTokens(String code) {
+        if (isBlank(linkedInConfig.getClientId())) {
+            throw new BadRequestException("CONFIGURATION REQUIRED: LinkedIn credentials not configured.");
+        }
+        try {
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("grant_type", "authorization_code");
+            body.add("code", code);
+            body.add("client_id", linkedInConfig.getClientId());
+            body.add("client_secret", linkedInConfig.getClientSecret());
+            body.add("redirect_uri", linkedInConfig.getRedirectUri());
+
+            Map<String, Object> response = restClient.post()
+                    .uri("https://www.linkedin.com/oauth/v2/accessToken")
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+
+            String accessToken = (String) response.get("access_token");
+            Integer expiresIn = (Integer) response.get("expires_in");
+
+            if (accessToken == null || accessToken.isBlank()) {
+                throw new BadRequestException("LinkedIn did not return an access token.");
+            }
+
+            // Fetch member profile using LinkedIn userinfo endpoint (OpenID Connect)
+            // This returns the member's sub (person ID), name, etc.
+            String memberName = "LinkedIn Member";
+            String memberUrn = null;
+            try {
+                Map<String, Object> profileResponse = restClient.get()
+                        .uri("https://api.linkedin.com/v2/userinfo")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .retrieve()
+                        .body(Map.class);
+
+                if (profileResponse != null) {
+                    String sub = (String) profileResponse.get("sub"); // LinkedIn member ID
+                    String name = (String) profileResponse.get("name");
+                    if (sub != null) {
+                        memberUrn = "urn:li:person:" + sub;
+                    }
+                    if (name != null && !name.isBlank()) {
+                        memberName = name;
+                    }
+                }
+            } catch (Exception ex) {
+                log.warn("[Social] Could not fetch LinkedIn profile: {}", ex.getMessage());
+                // Fallback: try the legacy /v2/me endpoint
+                try {
+                    Map<String, Object> meResponse = restClient.get()
+                            .uri("https://api.linkedin.com/v2/me?projection=(id,localizedFirstName,localizedLastName)")
+                            .header("Authorization", "Bearer " + accessToken)
+                            .retrieve()
+                            .body(Map.class);
+
+                    if (meResponse != null) {
+                        String id = (String) meResponse.get("id");
+                        if (id != null) {
+                            memberUrn = "urn:li:person:" + id;
+                            String firstName = (String) meResponse.getOrDefault("localizedFirstName", "");
+                            String lastName = (String) meResponse.getOrDefault("localizedLastName", "");
+                            memberName = (firstName + " " + lastName).trim();
+                            if (memberName.isBlank()) memberName = "LinkedIn Member";
+                        }
+                    }
+                } catch (Exception ex2) {
+                    log.warn("[Social] LinkedIn /v2/me fallback also failed: {}", ex2.getMessage());
+                }
+            }
+
+            return new TokenResult(
+                    accessToken, null,
+                    expiresIn != null ? LocalDateTime.now().plusSeconds(expiresIn) : null,
+                    memberName, memberUrn
+            );
+        } catch (BadRequestException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("[Social] LinkedIn token exchange failed: {}", e.getMessage());
+            throw new BadRequestException("Failed to exchange LinkedIn authorization code: " + e.getMessage());
         }
     }
 
@@ -377,7 +496,7 @@ public class SocialAccountServiceImpl implements SocialAccountService {
             return Platform.valueOf(platformStr.toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new BadRequestException("Unsupported platform: " + platformStr +
-                    ". Supported: INSTAGRAM, FACEBOOK, TWITTER, TIKTOK, YOUTUBE");
+                    ". Supported: INSTAGRAM, FACEBOOK, TWITTER, YOUTUBE, LINKEDIN");
         }
     }
 
@@ -409,7 +528,7 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                 .build();
     }
 
-    // Internal record for token exchange results — never exposed to frontend
+    // Internal record for token exchange results — NEVER exposed to frontend
     private record TokenResult(
             String accessToken,
             String refreshToken,

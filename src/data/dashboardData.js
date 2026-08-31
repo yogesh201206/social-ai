@@ -114,7 +114,7 @@ export const quickActions = [
 export const upcomingPosts = [
   { post: 'Summer Menu Launch', platform: 'Instagram', location: 'Casa Bella', time: 'Today, 12:00 PM', status: 'Scheduled' },
   { post: 'Happy Hour Special', platform: 'Facebook', location: 'Downtown Bistro', time: 'Tomorrow, 5:00 PM', status: 'Scheduled' },
-  { post: 'Weekend Brunch Promo', platform: 'TikTok', location: 'Garden Cafe', time: 'Sat, 10:00 AM', status: 'Draft' },
+  { post: 'Weekend Brunch Promo', platform: 'LinkedIn', location: 'Garden Cafe', time: 'Sat, 10:00 AM', status: 'Draft' },
   { post: 'Chef\'s Table Event', platform: 'Instagram', location: 'Spice Route', time: 'Sun, 6:00 PM', status: 'Scheduled' },
 ]
 

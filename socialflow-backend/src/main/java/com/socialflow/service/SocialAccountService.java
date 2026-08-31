@@ -16,7 +16,7 @@ public interface SocialAccountService {
      * Returns the OAuth redirect URL for the given platform and restaurant.
      * If platform credentials are not configured, throws BadRequestException with CONFIGURATION REQUIRED.
      *
-     * @param platform      the social media platform name (INSTAGRAM, FACEBOOK, TWITTER, TIKTOK, YOUTUBE)
+     * @param platform      the social media platform name (TWITTER, YOUTUBE, LINKEDIN, INSTAGRAM, FACEBOOK)
      * @param restaurantId  the restaurant to associate the account with
      * @param currentUserEmail authenticated user email from JWT
      * @return map with "redirectUrl" key

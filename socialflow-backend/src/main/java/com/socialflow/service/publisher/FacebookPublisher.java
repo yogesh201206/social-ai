@@ -32,6 +32,20 @@ public class FacebookPublisher implements SocialMediaPublisher {
 
     @Override
     public PublishResult publish(Post post, SocialAccount account) {
+        // ── COMING SOON ──────────────────────────────────────────────────────────
+        // Facebook integration is not yet enabled. Meta Business verification
+        // and pages_manage_posts permission approval are required.
+        // Architecture is ready for when credentials are approved.
+        // ─────────────────────────────────────────────────────────────────────────
+        return PublishResult.failure(
+                "Facebook integration is coming soon. Social account publishing has not been enabled yet. " +
+                "Please check back after Meta Business verification is complete.");
+    }
+
+    // ─── Future implementation (preserved for when Meta credentials are approved) ─
+
+    @SuppressWarnings("unused")
+    private PublishResult publishWhenEnabled(Post post, SocialAccount account) {
         String accessToken = account.getAccessToken();
 
         if (accessToken == null || accessToken.isBlank()) {

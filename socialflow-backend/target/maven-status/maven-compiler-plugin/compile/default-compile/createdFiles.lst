@@ -15,6 +15,7 @@ com/socialflow/entity/CampaignStatus.class
 com/socialflow/dto/AdminDashboardDto.class
 com/socialflow/dto/AIHistoryResponse.class
 com/socialflow/entity/User$UserBuilder.class
+com/socialflow/service/impl/SocialAccountServiceImpl$1.class
 com/socialflow/entity/PostStatus.class
 com/socialflow/exception/BadRequestException.class
 com/socialflow/service/impl/EmailCampaignServiceImpl.class
@@ -42,6 +43,7 @@ com/socialflow/dto/LoginRequest.class
 com/socialflow/entity/AIHistory.class
 com/socialflow/dto/EmailCampaignResponse$EmailCampaignResponseBuilder.class
 com/socialflow/exception/ErrorDetails.class
+com/socialflow/service/impl/AiServiceImpl$1.class
 com/socialflow/entity/ScheduledPost$ScheduledPostBuilder.class
 com/socialflow/service/impl/ScheduledPostServiceImpl.class
 com/socialflow/dto/UserUpdateRequest.class
@@ -91,6 +93,7 @@ com/socialflow/controller/AdminController.class
 com/socialflow/security/JwtTokenProvider.class
 com/socialflow/exception/UnauthorizedException.class
 com/socialflow/repository/UserRepository.class
+com/socialflow/service/publisher/SocialMediaPublisherFactory$1.class
 com/socialflow/entity/ScheduledPost.class
 com/socialflow/service/impl/AdminServiceImpl.class
 com/socialflow/dto/ScheduleRequest.class

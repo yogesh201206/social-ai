@@ -7,17 +7,37 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestClient;
 
+/**
+ * Configuration beans for all social media OAuth credentials.
+ *
+ * ACTIVE (real OAuth + publishing):
+ *   X (Twitter)  — prefix: x
+ *   Google/YouTube — prefix: google
+ *   LinkedIn       — prefix: linkedin
+ *
+ * COMING SOON (architecture ready, credentials optional until enabled):
+ *   Meta (Instagram + Facebook) — prefix: meta
+ *
+ * REMOVED:
+ *   TikTok — no longer supported
+ *
+ * Set values via environment variables — NEVER commit real secrets.
+ */
 @Configuration
 public class SocialPlatformConfig {
 
     /**
-     * Shared RestClient bean used for all external API calls (HuggingFace, platform APIs).
+     * Shared RestClient bean used for all external API calls.
      */
     @Bean
     public RestClient restClient() {
         return RestClient.builder().build();
     }
 
+    /**
+     * Meta (Instagram + Facebook) — Coming Soon.
+     * Architecture ready for when Meta Business verification is complete.
+     */
     @Configuration
     @ConfigurationProperties(prefix = "meta")
     @Getter
@@ -28,6 +48,10 @@ public class SocialPlatformConfig {
         private String redirectUri;
     }
 
+    /**
+     * X (Twitter) — Active.
+     * Set X_CLIENT_ID and X_CLIENT_SECRET environment variables.
+     */
     @Configuration
     @ConfigurationProperties(prefix = "x")
     @Getter
@@ -38,21 +62,32 @@ public class SocialPlatformConfig {
         private String redirectUri;
     }
 
-    @Configuration
-    @ConfigurationProperties(prefix = "tiktok")
-    @Getter
-    @Setter
-    public static class TikTokConfig {
-        private String clientKey;
-        private String clientSecret;
-        private String redirectUri;
-    }
-
+    /**
+     * Google (YouTube) — Active.
+     * Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.
+     */
     @Configuration
     @ConfigurationProperties(prefix = "google")
     @Getter
     @Setter
     public static class GoogleConfig {
+        private String clientId;
+        private String clientSecret;
+        private String redirectUri;
+    }
+
+    /**
+     * LinkedIn — Active.
+     * Set LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET environment variables.
+     * Register app at https://www.linkedin.com/developers/apps
+     * Required product: "Share on LinkedIn"
+     * Required scopes: openid, profile, w_member_social
+     */
+    @Configuration
+    @ConfigurationProperties(prefix = "linkedin")
+    @Getter
+    @Setter
+    public static class LinkedInConfig {
         private String clientId;
         private String clientSecret;
         private String redirectUri;

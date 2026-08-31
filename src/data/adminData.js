@@ -28,7 +28,7 @@ export const initialUsersData = [
     recentPosts: [
       { id: 'post-101', title: 'Summer Pasta Special', platform: 'Instagram', date: '2026-08-25', status: 'Published' },
       { id: 'post-102', title: 'Wine Tasting Night', platform: 'Facebook', date: '2026-08-28', status: 'Scheduled' },
-      { id: 'post-103', title: 'Weekend Brunch Menu', platform: 'TikTok', date: '2026-08-22', status: 'Published' },
+      { id: 'post-103', title: 'Weekend Brunch Menu', platform: 'LinkedIn', date: '2026-08-22', status: 'Published' },
     ],
     recentAIGenerations: [
       { id: 'ai-101', prompt: 'Italian pasta night caption', type: 'Instagram Caption', date: '2026-08-25' },
@@ -256,10 +256,10 @@ export const initialUsersData = [
     aiGenerationsCount: 45,
     campaignsCount: 1,
     recentPosts: [
-      { id: 'post-1001', title: 'Downtown Food Truck Location', platform: 'TikTok', date: '2026-08-25', status: 'Published' },
+      { id: 'post-1001', title: 'Downtown Food Truck Location', platform: 'LinkedIn', date: '2026-08-25', status: 'Published' },
     ],
     recentAIGenerations: [
-      { id: 'ai-1001', prompt: 'Food truck live location announcement', type: 'TikTok Script', date: '2026-08-25' },
+      { id: 'ai-1001', prompt: 'Food truck corporate catering announcement', type: 'LinkedIn Post', date: '2026-08-25' },
     ],
     recentCampaigns: [
       { id: 'cmp-1001', name: 'Street Food Trial Blast', status: 'Active', sentCount: 320 },

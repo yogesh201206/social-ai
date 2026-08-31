@@ -9,15 +9,14 @@ import Skeleton from '../../components/Skeleton'
 
 export default function AIHistory() {
   const navigate = useNavigate()
-  const { history, deleteFromHistory } = useAI()
+  const { history, loading, deleteFromHistory } = useAI()
   const [search, setSearch] = useState('')
-  const [loading] = useState(false)
 
   const filtered = history.filter(
     (item) =>
-      item.restaurantName.toLowerCase().includes(search.toLowerCase()) ||
-      item.contentType.toLowerCase().includes(search.toLowerCase()) ||
-      item.caption?.toLowerCase().includes(search.toLowerCase())
+      (item.restaurantName || '').toLowerCase().includes(search.toLowerCase()) ||
+      (item.contentType || '').toLowerCase().includes(search.toLowerCase()) ||
+      (item.caption || item.generatedContent || '').toLowerCase().includes(search.toLowerCase())
   )
 
   return (

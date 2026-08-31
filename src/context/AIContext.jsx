@@ -1,5 +1,4 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
-import { generateAIContent } from '../data/aiResponses'
 import { useAuth } from './AuthContext'
 import aiService from '../services/aiService'
 
@@ -13,12 +12,27 @@ export function AIProvider({ children }) {
     {
       id: 'welcome',
       role: 'assistant',
-      content: 'Hi! I\'m your AI Marketing Assistant. Ask me to create posts, captions, hashtags, or marketing ideas for your restaurant. Try: "Create a Diwali offer post for my cafe"',
+      content: 'Hi! I\'m your AI Marketing Assistant powered by real AI. Ask me to create posts, captions, hashtags, or marketing ideas for your restaurant. Try: "Create a Diwali offer post for my cafe"',
       timestamp: new Date().toISOString(),
     },
   ])
 
+  // Load history whenever token changes (login/logout)
   useEffect(() => {
+    if (!token) {
+      // User logged out — clear all AI state immediately
+      setHistory([])
+      setChatMessages([
+        {
+          id: 'welcome',
+          role: 'assistant',
+          content: 'Hi! I\'m your AI Marketing Assistant. Please log in to start generating content.',
+          timestamp: new Date().toISOString(),
+        },
+      ])
+      return
+    }
+
     setLoading(true)
     aiService.getHistory()
       .then((data) => {
@@ -26,64 +40,84 @@ export function AIProvider({ children }) {
           const formatted = data.map(h => ({
             id: String(h.id),
             restaurantName: h.restaurantName || 'Restaurant',
-            contentType: h.contentType || 'Social Media Caption',
+            contentType: h.contentType || 'Caption',
+            platform: h.platform || null,
+            model: h.model || null,
             prompt: h.prompt,
             generatedContent: h.generatedContent,
-            generatedAt: h.createdAt ? new Date(h.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
+            // For backward compat with existing components that use caption/content
+            caption: h.generatedContent,
+            generatedAt: h.createdAt
+              ? new Date(h.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+              : 'Recently',
           }))
           setHistory(formatted)
         }
       })
       .catch((err) => {
-        console.warn('[AIContext fetch error]:', err.message)
+        console.warn('[AIContext] Failed to load history:', err.message)
+        setHistory([])
       })
       .finally(() => setLoading(false))
   }, [token])
 
-  const addToHistory = useCallback(async (entry) => {
-    try {
-      const res = await aiService.saveHistory({
-        restaurantId: entry.restaurantId ? Number(entry.restaurantId) : 1,
-        contentType: entry.contentType?.includes('Caption') ? 'Caption' : 'Caption',
-        prompt: entry.prompt || 'AI Prompt',
-        generatedContent: entry.generatedContent || entry.content || '',
-      })
-      const newEntry = {
-        ...entry,
-        id: String(res.id),
-        generatedAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      }
-      setHistory((prev) => [newEntry, ...prev])
-      return newEntry
-    } catch (e) {
-      const newEntry = {
-        ...entry,
-        id: `ai-${Date.now()}`,
-        generatedAt: entry.generatedAt || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      }
-      setHistory((prev) => [newEntry, ...prev])
-      return newEntry
+  /**
+   * Real AI generation — calls backend which calls Hugging Face.
+   * HF_TOKEN NEVER reaches the browser.
+   * History is auto-saved on the backend — no manual saveHistory needed.
+   *
+   * @param {object} params - { prompt, restaurantId, restaurantName, category, audience, location, contentType, platform }
+   * @returns {object} { generatedContent, model, historyId, contentType, platform }
+   */
+  const generate = useCallback(async (params) => {
+    if (!params.prompt || !params.prompt.trim()) {
+      throw new Error('Prompt is required')
     }
+
+    const response = await aiService.generate({
+      prompt: params.prompt,
+      restaurantId: params.restaurantId ? Number(params.restaurantId) : null,
+      restaurantName: params.restaurantName || null,
+      category: params.category || null,
+      audience: params.audience || null,
+      location: params.location || null,
+      contentType: params.contentType || null,
+      platform: params.platform || null,
+    })
+
+    // History is auto-saved by backend — just add to local state for immediate display
+    const newEntry = {
+      id: String(response.historyId),
+      restaurantName: params.restaurantName || 'Restaurant',
+      contentType: response.contentType || params.contentType || 'Caption',
+      platform: response.platform || params.platform || null,
+      model: response.model,
+      prompt: params.prompt,
+      generatedContent: response.generatedContent,
+      caption: response.generatedContent,
+      generatedAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    }
+    setHistory(prev => [newEntry, ...prev])
+
+    return response
   }, [])
 
   const deleteFromHistory = useCallback(async (id) => {
     try {
       await aiService.deleteHistory(id)
-    } catch (e) {}
-    setHistory((prev) => prev.filter((h) => String(h.id) !== String(id)))
+    } catch (e) {
+      console.warn('[AIContext] Delete history error:', e.message)
+    }
+    setHistory(prev => prev.filter(h => String(h.id) !== String(id)))
   }, [])
 
   const getHistoryItem = useCallback(
-    (id) => history.find((h) => String(h.id) === String(id)),
+    (id) => history.find(h => String(h.id) === String(id)),
     [history]
   )
 
-  const generate = useCallback((input, generationType = 'full') => {
-    return generateAIContent(input, generationType)
-  }, [])
-
   const addChatMessage = useCallback((message) => {
-    setChatMessages((prev) => [...prev, message])
+    setChatMessages(prev => [...prev, message])
   }, [])
 
   const clearChat = useCallback(() => {
@@ -98,10 +132,9 @@ export function AIProvider({ children }) {
   }, [])
 
   const stats = useMemo(() => {
-    const captionCount = history.filter((h) =>
-      h.contentType?.includes('Caption') || h.contentType === 'Social Media Caption'
+    const captionCount = history.filter(h =>
+      h.contentType === 'Caption' || h.contentType === 'caption'
     ).length
-    const savedCount = history.length
     const typeCounts = history.reduce((acc, h) => {
       const type = h.contentType || 'Other'
       acc[type] = (acc[type] || 0) + 1
@@ -112,8 +145,8 @@ export function AIProvider({ children }) {
     return {
       totalGenerations: history.length,
       totalCaptions: captionCount,
-      savedContent: savedCount,
-      mostUsedType: mostUsed ? mostUsed[0] : 'Social Media Caption',
+      savedContent: history.length,
+      mostUsedType: mostUsed ? mostUsed[0] : 'Caption',
       mostUsedCount: mostUsed ? mostUsed[1] : 0,
     }
   }, [history])
@@ -125,10 +158,9 @@ export function AIProvider({ children }) {
         loading,
         chatMessages,
         stats,
-        addToHistory,
+        generate,
         deleteFromHistory,
         getHistoryItem,
-        generate,
         addChatMessage,
         clearChat,
         setChatMessages,

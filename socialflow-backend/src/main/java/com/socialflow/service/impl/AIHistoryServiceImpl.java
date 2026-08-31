@@ -32,7 +32,7 @@ public class AIHistoryServiceImpl implements AIHistoryService {
         if (isAdmin) {
             list = aiHistoryRepository.findAll();
         } else {
-            list = aiHistoryRepository.findByUserEmail(currentUserEmail);
+            list = aiHistoryRepository.findByUserEmailOrderByCreatedAtDesc(currentUserEmail);
         }
         return list.stream().map(this::mapToResponse).collect(Collectors.toList());
     }
@@ -92,6 +92,8 @@ public class AIHistoryServiceImpl implements AIHistoryService {
                 .restaurantId(h.getRestaurant() != null ? h.getRestaurant().getId() : null)
                 .restaurantName(h.getRestaurant() != null ? h.getRestaurant().getName() : null)
                 .contentType(h.getContentType())
+                .platform(h.getPlatform())
+                .model(h.getModel())
                 .prompt(h.getPrompt())
                 .generatedContent(h.getGeneratedContent())
                 .createdAt(h.getCreatedAt())

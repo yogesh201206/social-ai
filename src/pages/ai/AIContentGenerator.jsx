@@ -1,27 +1,26 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { History, Bot } from 'lucide-react'
+import { History, Bot, AlertCircle, Loader2 } from 'lucide-react'
 import { useAI } from '../../context/AIContext'
 import { usePosts } from '../../context/PostContext'
 import { useRestaurants } from '../../context/RestaurantContext'
 import AIInputForm from '../../components/AIInputForm'
 import AIResultCard from '../../components/AIResultCard'
 import SuggestionCard from '../../components/SuggestionCard'
-import LoadingAI from '../../components/LoadingAI'
 import { trendingSuggestions } from '../../data/suggestions'
-import { userProfile } from '../../data/dashboardData'
 
 const defaultInput = {
-  restaurantName: 'Spice Garden',
-  category: 'South Indian Restaurant',
-  audience: 'Food Lovers',
-  location: 'Madurai',
+  restaurantName: '',
+  category: '',
+  audience: '',
+  location: '',
   contentType: 'caption',
+  platform: '',
 }
 
 export default function AIContentGenerator() {
   const navigate = useNavigate()
-  const { generate, addToHistory } = useAI()
+  const { generate } = useAI()
   const { addPost } = usePosts()
   const { restaurants } = useRestaurants()
 
@@ -29,79 +28,141 @@ export default function AIContentGenerator() {
   const [image, setImage] = useState(null)
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [lastGenType, setLastGenType] = useState('full')
+  const [error, setError] = useState(null)
 
-  const runGenerate = async (genType = 'full') => {
-    setLoading(true)
-    setLastGenType(genType)
-    await new Promise((r) => setTimeout(r, 1500 + Math.random() * 500))
+  const getSelectedRestaurant = () => {
+    if (!input.restaurantName) return restaurants[0] || null
+    return restaurants.find(r =>
+      r.name.toLowerCase() === input.restaurantName.toLowerCase()
+    ) || restaurants[0] || null
+  }
 
-    let generated = generate(input, genType)
+  const runGenerate = async () => {
+    const restaurant = getSelectedRestaurant()
 
-    if (image?.preview) {
-      generated = {
-        ...generated,
-        caption: `${generated.caption}\n\n📸 Inspired by your uploaded image — visually appetizing content that drives engagement!`,
-      }
+    if (!input.restaurantName && !restaurant) {
+      setError('Please enter a restaurant name or select a restaurant.')
+      return
     }
 
-    setResult(generated)
-    setLoading(false)
+    setLoading(true)
+    setError(null)
+    setResult(null)
+
+    try {
+      // Build the prompt from form fields — backend enriches with restaurant context
+      const promptParts = []
+      if (input.contentType) {
+        const typeMap = {
+          caption: 'Create a social media caption',
+          hashtags: 'Generate relevant hashtags',
+          cta: 'Write a compelling call-to-action',
+          marketing_idea: 'Generate a creative marketing idea',
+          email_content: 'Write email marketing content',
+        }
+        promptParts.push(typeMap[input.contentType.toLowerCase()] || `Generate ${input.contentType}`)
+      }
+      if (input.restaurantName) promptParts.push(`for ${input.restaurantName}`)
+      if (input.category) promptParts.push(`(${input.category})`)
+      if (input.audience) promptParts.push(`targeting ${input.audience}`)
+      if (input.location) promptParts.push(`in ${input.location}`)
+      if (input.platform) promptParts.push(`for ${input.platform}`)
+
+      const prompt = promptParts.join(' ')
+
+      const response = await generate({
+        prompt,
+        restaurantId: restaurant?.id ? Number(restaurant.id) : null,
+        restaurantName: input.restaurantName || restaurant?.name,
+        category: input.category,
+        audience: input.audience,
+        location: input.location,
+        contentType: mapContentType(input.contentType),
+        platform: mapPlatform(input.platform),
+      })
+
+      // Convert backend response to result format expected by AIResultCard
+      setResult({
+        generatedContent: response.generatedContent,
+        caption: response.generatedContent,
+        contentType: input.contentType,
+        platform: input.platform,
+        historyId: response.historyId,
+        model: response.model,
+      })
+    } catch (err) {
+      const msg = err.message || 'AI generation failed. Please try again.'
+      setError(msg)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const mapContentType = (type) => {
+    if (!type) return null
+    const map = {
+      caption: 'Caption',
+      hashtags: 'Hashtags',
+      cta: 'CTA',
+      marketing_idea: 'Marketing_Idea',
+      email_content: 'Email_Content',
+    }
+    return map[type.toLowerCase()] || 'Caption'
+  }
+
+  const mapPlatform = (platform) => {
+    if (!platform) return null
+    const map = {
+      instagram: 'INSTAGRAM',
+      facebook: 'FACEBOOK',
+      twitter: 'TWITTER',
+      x: 'TWITTER',
+      tiktok: 'TIKTOK',
+      youtube: 'YOUTUBE',
+    }
+    return map[platform.toLowerCase()] || null
   }
 
   const buildPostPayload = () => {
-    const restaurant = restaurants.find(
-      (r) => r.name.toLowerCase() === input.restaurantName.toLowerCase()
-    ) || restaurants[0]
-
+    const restaurant = getSelectedRestaurant()
     return {
-      title: `${input.restaurantName} — ${result?.contentType || 'AI Post'}`,
-      caption: result?.caption || '',
-      image: image?.preview || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&h=400&fit=crop',
-      platform: 'Instagram',
-      status: 'Draft',
-      hashtags: result?.hashtags || [],
-      cta: result?.cta || '',
-      restaurantId: restaurant?.id || '1',
+      title: `${input.restaurantName || restaurant?.name || 'Restaurant'} — ${input.contentType || 'AI Post'}`,
+      caption: result?.generatedContent || result?.caption || '',
+      image: image?.preview || null,
+      platform: mapPlatform(input.platform) || 'INSTAGRAM',
+      status: 'DRAFT',
+      restaurantId: restaurant?.id || null,
       restaurantName: restaurant?.name || input.restaurantName,
-      restaurantLogo: restaurant?.logo || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=100&h=100&fit=crop',
-      scheduledDate: null,
-      scheduledTime: null,
-      publishedAt: null,
-      metrics: null,
     }
   }
 
   const handleSaveDraft = () => {
     if (!result) return
-    const postData = buildPostPayload()
-    addPost(postData)
-    addToHistory({ ...result, ...input })
+    addPost(buildPostPayload())
     navigate('/dashboard/posts/drafts')
   }
 
   const handleCreatePost = () => {
     if (!result) return
-    addToHistory({ ...result, ...input })
     navigate('/dashboard/posts/create', {
       state: {
         fromAI: true,
-        title: `${input.restaurantName} — ${result.contentType}`,
-        caption: result.caption,
-        hashtags: result.hashtags?.join(' ') || '',
-        cta: result.cta || '',
+        title: `${input.restaurantName} — ${input.contentType}`,
+        caption: result.generatedContent,
         imagePreview: image?.preview || null,
         restaurantName: input.restaurantName,
+        platform: mapPlatform(input.platform),
       },
     })
   }
 
   const handleSuggestion = (suggestion) => {
-    setInput((prev) => ({
+    setInput(prev => ({
       ...prev,
-      contentType: suggestion.contentType,
+      contentType: suggestion.contentType || prev.contentType,
     }))
-    runGenerate('full')
+    // Auto-trigger generation with suggestion
+    setTimeout(() => runGenerate(), 100)
   }
 
   return (
@@ -110,7 +171,7 @@ export default function AIContentGenerator() {
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">AI Content Generator</h2>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
-            Generate captions, hashtags, and marketing content powered by AI.
+            Generate captions, hashtags, and marketing content powered by Hugging Face AI.
           </p>
         </div>
         <div className="flex gap-2">
@@ -131,6 +192,16 @@ export default function AIContentGenerator() {
         </div>
       </div>
 
+      {error && (
+        <div className="px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-start gap-3">
+          <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-red-700 dark:text-red-400">Generation Failed</p>
+            <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">{error}</p>
+          </div>
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-2 gap-6">
         <AIInputForm
           values={input}
@@ -142,13 +213,19 @@ export default function AIContentGenerator() {
         />
 
         {loading ? (
-          <div className="glass rounded-2xl">
-            <LoadingAI />
+          <div className="glass rounded-2xl flex flex-col items-center justify-center min-h-[300px] gap-4">
+            <div className="h-14 w-14 rounded-2xl gradient-bg flex items-center justify-center animate-pulse">
+              <Loader2 className="h-7 w-7 text-white animate-spin" />
+            </div>
+            <div className="text-center">
+              <p className="font-semibold text-gray-900 dark:text-white">Generating with AI...</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Hugging Face is crafting your content</p>
+            </div>
           </div>
         ) : (
           <AIResultCard
             result={result}
-            onRegenerate={() => runGenerate(lastGenType)}
+            onRegenerate={runGenerate}
             onSaveDraft={handleSaveDraft}
             onCreatePost={handleCreatePost}
             loading={loading}

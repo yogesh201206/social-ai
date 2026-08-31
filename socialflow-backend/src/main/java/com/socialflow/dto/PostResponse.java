@@ -27,4 +27,8 @@ public class PostResponse {
     private LocalDateTime publishedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    /** Platform post ID returned after successful publishing (e.g., Instagram post ID) */
+    private String platformPostId;
+    /** Error message when status is FAILED */
+    private String failureReason;
 }

@@ -34,6 +34,12 @@ public class AIHistory {
     @Column(length = 4000)
     private String generatedContent;
 
+    @Enumerated(EnumType.STRING)
+    private Platform platform;
+
+    @Column(length = 200)
+    private String model;
+
     private LocalDateTime createdAt;
 
     @PrePersist

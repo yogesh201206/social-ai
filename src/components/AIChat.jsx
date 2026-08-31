@@ -1,14 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Trash2, Sparkles } from 'lucide-react'
+import { Send, Trash2, Sparkles, AlertCircle } from 'lucide-react'
 import MessageBubble from './MessageBubble'
 import { TypingIndicator } from './LoadingAI'
-import { getChatResponse } from '../data/aiResponses'
 import { useAI } from '../context/AIContext'
 
-export default function AIChat({ restaurantName = '' }) {
-  const { chatMessages, addChatMessage, clearChat } = useAI()
+export default function AIChat({ restaurantName = '', restaurantId = null }) {
+  const { chatMessages, addChatMessage, clearChat, generate } = useAI()
   const [input, setInput] = useState('')
   const [typing, setTyping] = useState(false)
+  const [error, setError] = useState(null)
   const bottomRef = useRef(null)
 
   useEffect(() => {
@@ -19,6 +19,7 @@ export default function AIChat({ restaurantName = '' }) {
     const message = text.trim()
     if (!message || typing) return
 
+    setError(null)
     addChatMessage({
       id: `user-${Date.now()}`,
       role: 'user',
@@ -28,16 +29,35 @@ export default function AIChat({ restaurantName = '' }) {
     setInput('')
     setTyping(true)
 
-    await new Promise((r) => setTimeout(r, 1200 + Math.random() * 800))
+    try {
+      // Call real Hugging Face AI through backend
+      const response = await generate({
+        prompt: message,
+        restaurantId: restaurantId || null,
+        restaurantName: restaurantName || null,
+        contentType: null,
+        platform: null,
+      })
 
-    const response = getChatResponse(message, restaurantName)
-    addChatMessage({
-      id: `ai-${Date.now()}`,
-      role: 'assistant',
-      content: response,
-      timestamp: new Date().toISOString(),
-    })
-    setTyping(false)
+      addChatMessage({
+        id: `ai-${Date.now()}`,
+        role: 'assistant',
+        content: response.generatedContent,
+        timestamp: new Date().toISOString(),
+      })
+    } catch (err) {
+      const errorMsg = err.message || 'AI service is temporarily unavailable. Please try again.'
+      setError(errorMsg)
+      addChatMessage({
+        id: `ai-error-${Date.now()}`,
+        role: 'assistant',
+        content: `⚠️ ${errorMsg}`,
+        timestamp: new Date().toISOString(),
+        isError: true,
+      })
+    } finally {
+      setTyping(false)
+    }
   }
 
   const quickPrompts = [
@@ -58,7 +78,7 @@ export default function AIChat({ restaurantName = '' }) {
             <h3 className="font-semibold text-gray-900 dark:text-white text-sm">AI Marketing Assistant</h3>
             <p className="text-[10px] text-green-500 flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-              Online
+              Powered by Hugging Face AI
             </p>
           </div>
         </div>
@@ -71,6 +91,13 @@ export default function AIChat({ restaurantName = '' }) {
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
+
+      {error && (
+        <div className="mx-4 mt-3 px-3 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
         {chatMessages.map((msg) => (

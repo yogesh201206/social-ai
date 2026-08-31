@@ -45,6 +45,8 @@ function mapPostFromBackend(p) {
     scheduledTime: formatScheduleTime(p.scheduledAt),
     publishedAt: p.publishedAt ? new Date(p.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null,
     createdAt: p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
+    platformPostId: p.platformPostId || null,
+    failureReason: p.failureReason || null,
     metrics: p.status === 'PUBLISHED' ? { likes: 120, comments: 14, shares: 8 } : null,
   }
 }
@@ -150,6 +152,13 @@ export function PostProvider({ children }) {
     return updatedPost
   }, [])
 
+  const publishPost = useCallback(async (id) => {
+    const res = await postService.publishPost(id)
+    const updatedPost = mapPostFromBackend(res)
+    setPosts((prev) => prev.map((p) => (String(p.id) === String(id) ? updatedPost : p)))
+    return updatedPost
+  }, [])
+
   const getPostsByStatus = useCallback(
     (status) => posts.filter((p) => p.status?.toLowerCase() === status?.toLowerCase()),
     [posts]
@@ -182,6 +191,7 @@ export function PostProvider({ children }) {
         updatePost,
         deletePost,
         cancelSchedule,
+        publishPost,
         getPostsByStatus,
         getRecentPosts,
         getPerformanceOverview,

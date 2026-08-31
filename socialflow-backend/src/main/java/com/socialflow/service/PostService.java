@@ -16,4 +16,5 @@ public interface PostService {
     List<PostResponse> getPostsByStatus(PostStatus status, String currentUserEmail, boolean isAdmin);
     PostResponse schedulePost(Long id, String scheduledAt, String currentUserEmail, boolean isAdmin);
     PostResponse cancelPost(Long id, String currentUserEmail, boolean isAdmin);
+    PostResponse publishPost(Long id, String currentUserEmail, boolean isAdmin);
 }

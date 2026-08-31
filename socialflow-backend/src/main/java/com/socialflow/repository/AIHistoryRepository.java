@@ -10,4 +10,5 @@ import java.util.List;
 public interface AIHistoryRepository extends JpaRepository<AIHistory, Long> {
     List<AIHistory> findByUserId(Long userId);
     List<AIHistory> findByUserEmail(String email);
+    List<AIHistory> findByUserEmailOrderByCreatedAtDesc(String email);
 }

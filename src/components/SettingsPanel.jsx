@@ -1,11 +1,14 @@
-import { useState } from 'react'
-import { Moon, Sun, Bell, Shield, Palette } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Moon, Sun, Bell, Shield, Palette, Link2, CheckCircle, XCircle, AlertTriangle, Loader2 } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
+import { useRestaurants } from '../context/RestaurantContext'
+import socialAccountService from '../services/socialAccountService'
 import Card from './Card'
 import Button from './Button'
 
 const tabs = [
   { id: 'general', label: 'General', icon: Palette },
+  { id: 'social', label: 'Social Accounts', icon: Link2 },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'security', label: 'Security', icon: Shield },
   { id: 'appearance', label: 'Appearance', icon: Moon },
@@ -13,7 +16,13 @@ const tabs = [
 
 export default function SettingsPanel() {
   const { darkMode, toggleDarkMode } = useTheme()
+  const { restaurants } = useRestaurants()
   const [activeTab, setActiveTab] = useState('general')
+  const [socialAccounts, setSocialAccounts] = useState([])
+  const [socialLoading, setSocialLoading] = useState(false)
+  const [socialError, setSocialError] = useState(null)
+  const [connectingPlatform, setConnectingPlatform] = useState(null)
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState(null)
   const [settings, setSettings] = useState({
     emailNotifications: true,
     pushNotifications: true,
@@ -26,6 +35,54 @@ export default function SettingsPanel() {
     new: '',
     confirm: '',
   })
+
+  // Load social accounts when tab is opened
+  useEffect(() => {
+    if (activeTab === 'social') {
+      loadSocialAccounts()
+    }
+  }, [activeTab])
+
+  const loadSocialAccounts = async () => {
+    setSocialLoading(true)
+    setSocialError(null)
+    try {
+      const data = await socialAccountService.getAccounts()
+      setSocialAccounts(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setSocialError(err.message || 'Failed to load social accounts')
+    } finally {
+      setSocialLoading(false)
+    }
+  }
+
+  const handleConnect = async (platform) => {
+    const restaurantId = selectedRestaurantId || restaurants[0]?.id
+    if (!restaurantId) {
+      setSocialError('Please select a restaurant first.')
+      return
+    }
+    setConnectingPlatform(platform)
+    setSocialError(null)
+    try {
+      const result = await socialAccountService.initiateConnect(platform, restaurantId)
+      if (result?.redirectUrl) {
+        window.location.href = result.redirectUrl
+      }
+    } catch (err) {
+      setSocialError(err.message || 'Failed to initiate connection')
+      setConnectingPlatform(null)
+    }
+  }
+
+  const handleDisconnect = async (accountId) => {
+    try {
+      await socialAccountService.disconnect(accountId)
+      setSocialAccounts(prev => prev.filter(a => a.id !== accountId))
+    } catch (err) {
+      setSocialError(err.message || 'Failed to disconnect account')
+    }
+  }
 
   const toggleSetting = (key) => {
     setSettings((prev) => ({ ...prev, [key]: !prev[key] }))
@@ -99,6 +156,97 @@ export default function SettingsPanel() {
                 </select>
               </div>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'social' && (
+          <div className="animate-fade-in">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Connected Social Accounts</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+              Connect your restaurant's social accounts to publish posts directly from SocialFlow AI.
+            </p>
+
+            {/* Restaurant selector */}
+            {restaurants.length > 0 && (
+              <div className="mb-5">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Select Restaurant
+                </label>
+                <select
+                  value={selectedRestaurantId || restaurants[0]?.id || ''}
+                  onChange={(e) => setSelectedRestaurantId(Number(e.target.value))}
+                  className="w-full sm:w-64 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  {restaurants.map(r => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {socialError && (
+              <div className="mb-4 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700 dark:text-amber-400">{socialError}</p>
+              </div>
+            )}
+
+            {socialLoading ? (
+              <div className="flex items-center gap-3 py-8 text-gray-400">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span className="text-sm">Loading connected accounts...</span>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {[{p:'INSTAGRAM',label:'Instagram',color:'from-pink-500 to-purple-500'},
+                  {p:'FACEBOOK',label:'Facebook',color:'from-blue-600 to-blue-700'},
+                  {p:'TWITTER',label:'X (Twitter)',color:'from-gray-800 to-gray-900'},
+                  {p:'TIKTOK',label:'TikTok',color:'from-gray-900 to-pink-600'},
+                  {p:'YOUTUBE',label:'YouTube',color:'from-red-600 to-red-700'},
+                ].map(({p, label, color}) => {
+                  const account = socialAccounts.find(a => a.platform === p)
+                  return (
+                    <div key={p} className="flex items-center justify-between p-4 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800/50">
+                      <div className="flex items-center gap-3">
+                        <div className={`h-9 w-9 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center`}>
+                          <Link2 className="h-4 w-4 text-white" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">{label}</p>
+                          {account?.isConnected ? (
+                            <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                              <CheckCircle className="h-3 w-3" />
+                              {account.accountName || 'Connected'}
+                              {account.tokenExpired && ' · Token expired'}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-gray-400">Not connected</p>
+                          )}
+                        </div>
+                      </div>
+                      {account?.isConnected ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDisconnect(account.id)}
+                        >
+                          <XCircle className="h-3.5 w-3.5" />
+                          Disconnect
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          loading={connectingPlatform === p}
+                          onClick={() => handleConnect(p)}
+                        >
+                          Connect
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
 

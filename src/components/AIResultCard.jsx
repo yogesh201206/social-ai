@@ -31,11 +31,9 @@ export default function AIResultCard({
     setTimeout(() => setCopied(null), 2000)
   }
 
-  const fullText = [
-    result.caption,
-    result.hashtags?.length ? result.hashtags.join(' ') : '',
-    result.cta ? `CTA: ${result.cta}` : '',
-  ].filter(Boolean).join('\n\n')
+  // Support both real API response (generatedContent) and legacy mock fields (caption)
+  const displayText = result.generatedContent || result.caption || ''
+  const fullText = displayText
 
   return (
     <div className="glass rounded-2xl p-6 space-y-5 animate-fade-in">
@@ -43,22 +41,24 @@ export default function AIResultCard({
         <div>
           <h3 className="font-semibold text-gray-900 dark:text-white">Generated Content</h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            {result.contentType} · {result.restaurantName}
+            {result.contentType && `${result.contentType} · `}
+            {result.model ? `Model: ${result.model.split('/').pop()}` : 'AI Generated'}
           </p>
         </div>
-        <span className="text-[10px] text-gray-400">{result.generatedAt}</span>
+        <span className="text-[10px] text-gray-400">{result.generatedAt || 'Just now'}</span>
       </div>
 
-      {result.caption && (
+      {/* Real API response — show generatedContent in full */}
+      {displayText && (
         <section className="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
               <MessageSquare className="h-4 w-4 text-brand-500" />
-              Caption
+              {result.contentType || 'Generated Content'}
             </div>
             <button
               type="button"
-              onClick={() => copyText(result.caption, 'caption')}
+              onClick={() => copyText(displayText, 'caption')}
               className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
             >
               {copied === 'caption' ? (
@@ -69,7 +69,7 @@ export default function AIResultCard({
             </button>
           </div>
           <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
-            {result.caption}
+            {displayText}
           </p>
         </section>
       )}

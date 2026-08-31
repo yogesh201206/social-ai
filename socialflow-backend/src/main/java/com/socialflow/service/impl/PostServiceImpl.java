@@ -10,8 +10,13 @@ import com.socialflow.repository.BranchRepository;
 import com.socialflow.repository.PostRepository;
 import com.socialflow.repository.RestaurantRepository;
 import com.socialflow.repository.ScheduledPostRepository;
+import com.socialflow.repository.SocialAccountRepository;
 import com.socialflow.service.PostService;
+import com.socialflow.service.publisher.PublishResult;
+import com.socialflow.service.publisher.SocialMediaPublisher;
+import com.socialflow.service.publisher.SocialMediaPublisherFactory;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,12 +26,15 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PostServiceImpl implements PostService {
 
     private final PostRepository postRepository;
     private final RestaurantRepository restaurantRepository;
     private final BranchRepository branchRepository;
     private final ScheduledPostRepository scheduledPostRepository;
+    private final SocialAccountRepository socialAccountRepository;
+    private final SocialMediaPublisherFactory publisherFactory;
 
     @Override
     public List<PostResponse> getAllPosts(String currentUserEmail, boolean isAdmin) {
@@ -313,6 +321,82 @@ public class PostServiceImpl implements PostService {
         return mapToPostResponse(saved);
     }
 
+    @Override
+    @Transactional
+    public PostResponse publishPost(Long id, String currentUserEmail, boolean isAdmin) {
+        Post post = postRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Post not found with id: " + id));
+
+        if (!isAdmin && !post.getRestaurant().getOwner().getEmail().equalsIgnoreCase(currentUserEmail)) {
+            throw new UnauthorizedException("Not authorized to publish this post");
+        }
+
+        if (post.getStatus() == PostStatus.PUBLISHED) {
+            throw new BadRequestException("Post is already published");
+        }
+        if (post.getStatus() == PostStatus.PROCESSING) {
+            throw new BadRequestException("Post is already being processed");
+        }
+
+        // Look up connected social account for this restaurant + platform
+        Platform platform = post.getPlatform();
+        if (platform == null) {
+            throw new BadRequestException("Post has no platform set. Cannot publish.");
+        }
+
+        SocialAccount account = socialAccountRepository
+                .findByRestaurantIdAndPlatform(post.getRestaurant().getId(), platform)
+                .orElseThrow(() -> new BadRequestException(
+                        "No connected " + platform.name() + " account found for this restaurant. " +
+                        "Please connect your " + platform.name() + " account before publishing."));
+
+        if (!Boolean.TRUE.equals(account.getIsConnected())) {
+            throw new BadRequestException(
+                    platform.name() + " account is not connected. Please reconnect before publishing.");
+        }
+
+        if (!account.isTokenValid()) {
+            throw new BadRequestException(
+                    platform.name() + " access token has expired. Please reconnect your account.");
+        }
+
+        // Mark as PROCESSING to prevent double-publish
+        post.setStatus(PostStatus.PROCESSING);
+        postRepository.save(post);
+
+        // Call the appropriate platform publisher
+        SocialMediaPublisher publisher = publisherFactory.getPublisher(platform);
+        PublishResult result = publisher.publish(post, account);
+
+        if (result.success()) {
+            post.setStatus(PostStatus.PUBLISHED);
+            post.setPublishedAt(LocalDateTime.now());
+            post.setPlatformPostId(result.platformPostId());
+            post.setFailureReason(null);
+            log.info("[Publish] Post id={} published to {} — platformPostId={}",
+                    id, platform, result.platformPostId());
+        } else {
+            post.setStatus(PostStatus.FAILED);
+            post.setFailureReason(result.errorMessage());
+            log.warn("[Publish] Post id={} FAILED on {}: {}", id, platform, result.errorMessage());
+        }
+
+        Post saved = postRepository.save(post);
+
+        // Sync scheduled posts status
+        List<ScheduledPost> scheduledPosts = scheduledPostRepository.findByPostId(id);
+        for (ScheduledPost sp : scheduledPosts) {
+            sp.setStatus(result.success() ? ScheduleStatus.PUBLISHED : ScheduleStatus.FAILED);
+            scheduledPostRepository.save(sp);
+        }
+
+        if (!result.success()) {
+            throw new BadRequestException("Publishing failed: " + result.errorMessage());
+        }
+
+        return mapToPostResponse(saved);
+    }
+
     private PostResponse mapToPostResponse(Post p) {
         return PostResponse.builder()
                 .id(p.getId())
@@ -328,6 +412,8 @@ public class PostServiceImpl implements PostService {
                 .status(p.getStatus())
                 .scheduledAt(p.getScheduledAt())
                 .publishedAt(p.getPublishedAt())
+                .platformPostId(p.getPlatformPostId())
+                .failureReason(p.getFailureReason())
                 .createdAt(p.getCreatedAt())
                 .updatedAt(p.getUpdatedAt())
                 .build();

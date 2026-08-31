@@ -89,4 +89,15 @@ public class PostController {
         String email = authentication != null ? authentication.getName() : "";
         return ResponseEntity.ok(postService.cancelPost(id, email, isAdmin(authentication)));
     }
+
+    /**
+     * POST /api/posts/{id}/publish
+     * Publishes a post immediately to the connected social media platform.
+     * Requires a connected social account for the post's platform and restaurant.
+     */
+    @PostMapping("/{id}/publish")
+    public ResponseEntity<PostResponse> publishPost(@PathVariable Long id, Authentication authentication) {
+        String email = authentication != null ? authentication.getName() : "";
+        return ResponseEntity.ok(postService.publishPost(id, email, isAdmin(authentication)));
+    }
 }

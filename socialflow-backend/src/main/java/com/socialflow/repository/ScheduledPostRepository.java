@@ -15,4 +15,5 @@ public interface ScheduledPostRepository extends JpaRepository<ScheduledPost, Lo
     List<ScheduledPost> findByStatus(ScheduleStatus status);
     List<ScheduledPost> findByPostId(Long postId);
     void deleteByPostId(Long postId);
+    List<ScheduledPost> findByStatusAndScheduledDateTimeBefore(ScheduleStatus status, java.time.LocalDateTime dateTime);
 }

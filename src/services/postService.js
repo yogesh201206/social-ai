@@ -53,6 +53,16 @@ export const postService = {
       method: 'POST',
     })
   },
+
+  /**
+   * Publishes a post to the connected social media platform.
+   * Requires connected social account for the post's platform.
+   */
+  publishPost: async (id) => {
+    return await apiFetch(`/posts/${id}/publish`, {
+      method: 'POST',
+    })
+  },
 }
 
 export default postService

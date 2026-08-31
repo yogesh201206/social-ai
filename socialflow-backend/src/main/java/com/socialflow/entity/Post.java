@@ -46,6 +46,14 @@ public class Post {
 
     private LocalDateTime publishedAt;
 
+    /** Platform post ID returned by the social media API after successful publishing */
+    @Column(name = "platform_post_id", length = 200)
+    private String platformPostId;
+
+    /** Safe error message when status is FAILED */
+    @Column(name = "failure_reason", length = 500)
+    private String failureReason;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

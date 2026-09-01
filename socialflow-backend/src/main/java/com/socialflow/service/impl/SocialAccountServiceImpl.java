@@ -17,8 +17,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -26,6 +31,8 @@ import java.util.*;
 @RequiredArgsConstructor
 @Slf4j
 public class SocialAccountServiceImpl implements SocialAccountService {
+
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final SocialAccountRepository socialAccountRepository;
     private final UserRepository userRepository;
@@ -82,27 +89,52 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                         .isConnected(false)
                         .build());
         account.setOauthState(state);
+
+        // For X (Twitter), generate a cryptographically secure PKCE code_verifier
+        String codeVerifier = null;
+        if (platform == Platform.TWITTER) {
+            codeVerifier = generatePkceVerifier();
+            account.setPkceCodeVerifier(codeVerifier);
+        } else {
+            account.setPkceCodeVerifier(null);
+        }
+
         socialAccountRepository.save(account);
 
         // Build OAuth redirect URL per platform
-        String redirectUrl = buildOAuthUrl(platform, state, restaurantId);
+        String redirectUrl = buildOAuthUrl(platform, state, restaurantId, codeVerifier);
         return Map.of("redirectUrl", redirectUrl);
     }
 
     @Override
     @Transactional
     public SocialAccountResponse handleCallback(String platformStr, String code, String state) {
+        if (isBlank(state)) {
+            throw new BadRequestException("Missing OAuth state parameter in callback");
+        }
+        if (isBlank(code)) {
+            throw new BadRequestException("Missing OAuth authorization code in callback");
+        }
+
         // 1. Validate state (CSRF protection)
         SocialAccount account = socialAccountRepository.findByOauthState(state)
+                .or(() -> {
+                    if (state.contains(":")) {
+                        String prefix = state.substring(0, state.indexOf(":"));
+                        return socialAccountRepository.findByOauthState(prefix);
+                    }
+                    return Optional.empty();
+                })
                 .orElseThrow(() -> new BadRequestException("Invalid or expired OAuth state parameter"));
 
         Platform platform = parsePlatform(platformStr);
         if (account.getPlatform() != platform) {
-            throw new BadRequestException("Platform mismatch in OAuth callback");
+            throw new BadRequestException("Platform mismatch in OAuth callback: expected " + account.getPlatform() + " but got " + platform);
         }
 
-        // 2. Exchange code for tokens
-        TokenResult tokens = exchangeCodeForTokens(platform, code, account.getRestaurant().getId());
+        // 2. Exchange code for tokens (using stored PKCE verifier for X)
+        String pkceVerifier = account.getPkceCodeVerifier();
+        TokenResult tokens = exchangeCodeForTokens(platform, code, account.getRestaurant().getId(), pkceVerifier);
 
         // 3. Update account with tokens
         account.setAccessToken(tokens.accessToken());
@@ -112,6 +144,7 @@ public class SocialAccountServiceImpl implements SocialAccountService {
         account.setPlatformAccountId(tokens.platformAccountId());
         account.setIsConnected(true);
         account.setOauthState(null); // Clear state after use
+        account.setPkceCodeVerifier(null); // Clear PKCE verifier after use
 
         SocialAccount saved = socialAccountRepository.save(account);
         log.info("[Social] Connected {} account for restaurant={}", platform, account.getRestaurant().getId());
@@ -136,6 +169,7 @@ public class SocialAccountServiceImpl implements SocialAccountService {
         // Clear tokens securely before deletion
         account.setAccessToken(null);
         account.setRefreshToken(null);
+        account.setPkceCodeVerifier(null);
         account.setIsConnected(false);
         socialAccountRepository.save(account);
         socialAccountRepository.delete(account);
@@ -144,10 +178,10 @@ public class SocialAccountServiceImpl implements SocialAccountService {
 
     // ─── OAuth URL Builders ─────────────────────────────────────────────────────
 
-    private String buildOAuthUrl(Platform platform, String state, Long restaurantId) {
+    private String buildOAuthUrl(Platform platform, String state, Long restaurantId, String codeVerifier) {
         return switch (platform) {
             case INSTAGRAM, FACEBOOK -> buildMetaOAuthUrl(platform, state, restaurantId);
-            case TWITTER  -> buildXOAuthUrl(state, restaurantId);
+            case TWITTER  -> buildXOAuthUrl(state, codeVerifier);
             case YOUTUBE  -> buildGoogleOAuthUrl(state, restaurantId);
             case LINKEDIN -> buildLinkedInOAuthUrl(state, restaurantId);
         };
@@ -172,21 +206,54 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                "&response_type=code";
     }
 
-    private String buildXOAuthUrl(String state, Long restaurantId) {
-        if (isBlank(xConfig.getClientId()) || isBlank(xConfig.getClientSecret())) {
+    /**
+     * Builds X (Twitter) OAuth 2.0 PKCE Authorization URL with S256 challenge.
+     * Required scopes: tweet.read, tweet.write, users.read, offline.access
+     */
+    private String buildXOAuthUrl(String state, String codeVerifier) {
+        if (isBlank(xConfig.getClientId())) {
             throw new BadRequestException(
                     "CONFIGURATION REQUIRED: X (Twitter) client credentials are not configured. " +
                     "Please set X_CLIENT_ID and X_CLIENT_SECRET environment variables. " +
-                    "Register your app at https://developer.twitter.com/");
+                    "Register your app at https://developer.x.com/");
         }
-        return "https://twitter.com/i/oauth2/authorize" +
+
+        String verifier = codeVerifier != null ? codeVerifier : generatePkceVerifier();
+        String codeChallenge = generatePkceChallenge(verifier);
+        String endpoint = "https://x.com/i/oauth2/authorize";
+        String scopes = "tweet.read tweet.write users.read offline.access";
+        String encodedScopes = encode(scopes).replace("+", "%20");
+        String encodedRedirectUri = encode(xConfig.getRedirectUri());
+        String encodedClientId = encode(xConfig.getClientId());
+        String encodedState = encode(state);
+
+        // TEMPORARY Sanitized Debug Logging (zero secrets logged)
+        log.info("[X-OAUTH] endpoint={}", endpoint);
+        log.info("[X-OAUTH] redirectUri={}", xConfig.getRedirectUri());
+        log.info("[X-OAUTH] scopes={}", scopes);
+        log.info("[X-OAUTH] pkce=S256");
+        log.info("[X-OAUTH] challengeLength={}", codeChallenge.length());
+        log.info("[X-OAUTH] clientIdLength={}", xConfig.getClientId().length());
+        log.info("[X-OAUTH] statePresent={}", !isBlank(state));
+
+        String sanitizedUrl = endpoint +
                "?response_type=code" +
-               "&client_id=" + encode(xConfig.getClientId()) +
-               "&redirect_uri=" + encode(xConfig.getRedirectUri()) +
-               "&scope=" + encode("tweet.read tweet.write users.read offline.access") +
-               "&state=" + encode(state + ":" + restaurantId) +
-               "&code_challenge=challenge" +
-               "&code_challenge_method=plain";
+               "&client_id=[REDACTED_LEN_" + xConfig.getClientId().length() + "]" +
+               "&redirect_uri=" + encodedRedirectUri +
+               "&scope=" + encodedScopes +
+               "&state=[REDACTED_STATE]" +
+               "&code_challenge=" + codeChallenge +
+               "&code_challenge_method=S256";
+        log.info("[X-OAUTH] sanitizedAuthUrl={}", sanitizedUrl);
+
+        return endpoint +
+               "?response_type=code" +
+               "&client_id=" + encodedClientId +
+               "&redirect_uri=" + encodedRedirectUri +
+               "&scope=" + encodedScopes +
+               "&state=" + encodedState +
+               "&code_challenge=" + codeChallenge +
+               "&code_challenge_method=S256";
     }
 
     private String buildGoogleOAuthUrl(String state, Long restaurantId) {
@@ -196,26 +263,44 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                     "Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables. " +
                     "Register your app at https://console.cloud.google.com/");
         }
-        return "https://accounts.google.com/o/oauth2/v2/auth" +
-               "?client_id=" + encode(googleConfig.getClientId()) +
-               "&redirect_uri=" + encode(googleConfig.getRedirectUri()) +
+
+        String endpoint = "https://accounts.google.com/o/oauth2/v2/auth";
+        String scopes = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube";
+        String redirectUri = googleConfig.getRedirectUri();
+        int clientIdLength = googleConfig.getClientId().length();
+
+        // Sanitized Debug Logging (zero secrets logged)
+        log.info("[YOUTUBE-OAUTH] endpoint={}", endpoint);
+        log.info("[YOUTUBE-OAUTH] redirectUri={}", redirectUri);
+        log.info("[YOUTUBE-OAUTH] scopes={}", scopes);
+        log.info("[YOUTUBE-OAUTH] clientIdLength={}", clientIdLength);
+
+        String encodedScopes = encode(scopes);
+        String encodedRedirectUri = encode(redirectUri);
+        String encodedClientId = encode(googleConfig.getClientId());
+        String encodedState = encode(state + ":" + restaurantId);
+
+        String sanitizedUrl = endpoint +
+                "?client_id=[REDACTED_LEN_" + clientIdLength + "]" +
+                "&redirect_uri=" + encodedRedirectUri +
+                "&response_type=code" +
+                "&scope=" + encodedScopes +
+                "&access_type=offline" +
+                "&state=[REDACTED_STATE]";
+        log.info("[YOUTUBE-OAUTH] sanitizedAuthUrl={}", sanitizedUrl);
+
+        return endpoint +
+               "?client_id=" + encodedClientId +
+               "&redirect_uri=" + encodedRedirectUri +
                "&response_type=code" +
-               "&scope=" + encode("https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube") +
+               "&scope=" + encodedScopes +
                "&access_type=offline" +
-               "&state=" + encode(state + ":" + restaurantId);
+               "&state=" + encodedState;
     }
 
     /**
      * Builds LinkedIn OAuth 2.0 authorization URL.
-     *
-     * LinkedIn OAuth 2.0 with PKCE (recommended) or standard auth code flow.
-     * Required scopes (as of 2024-2026 LinkedIn API):
-     *   - openid     : OpenID Connect — identify the member
-     *   - profile    : Read basic profile info (name, picture)
-     *   - w_member_social : Post, comment, and like on behalf of the member
-     *
-     * NOTE: LinkedIn no longer requires r_liteprofile/r_emailaddress for basic posting.
-     * The "Share on LinkedIn" product must be added in the developer portal.
+     * Required scopes: openid, profile, w_member_social
      */
     private String buildLinkedInOAuthUrl(String state, Long restaurantId) {
         if (isBlank(linkedInConfig.getClientId()) || isBlank(linkedInConfig.getClientSecret())) {
@@ -225,20 +310,45 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                     "Register your app at https://www.linkedin.com/developers/apps and add " +
                     "'Share on LinkedIn' product to get w_member_social scope.");
         }
-        return "https://www.linkedin.com/oauth/v2/authorization" +
+
+        String endpoint = "https://www.linkedin.com/oauth/v2/authorization";
+        String scopes = "openid profile w_member_social";
+        String redirectUri = linkedInConfig.getRedirectUri();
+        int clientIdLength = linkedInConfig.getClientId().length();
+
+        // Sanitized Debug Logging (zero secrets logged)
+        log.info("[LINKEDIN-OAUTH] endpoint={}", endpoint);
+        log.info("[LINKEDIN-OAUTH] redirectUri={}", redirectUri);
+        log.info("[LINKEDIN-OAUTH] scopes={}", scopes);
+        log.info("[LINKEDIN-OAUTH] clientIdLength={}", clientIdLength);
+
+        String encodedScopes = encode(scopes);
+        String encodedRedirectUri = encode(redirectUri);
+        String encodedClientId = encode(linkedInConfig.getClientId());
+        String encodedState = encode(state + ":" + restaurantId);
+
+        String sanitizedUrl = endpoint +
+                "?response_type=code" +
+                "&client_id=[REDACTED_LEN_" + clientIdLength + "]" +
+                "&redirect_uri=" + encodedRedirectUri +
+                "&scope=" + encodedScopes +
+                "&state=[REDACTED_STATE]";
+        log.info("[LINKEDIN-OAUTH] sanitizedAuthUrl={}", sanitizedUrl);
+
+        return endpoint +
                "?response_type=code" +
-               "&client_id=" + encode(linkedInConfig.getClientId()) +
-               "&redirect_uri=" + encode(linkedInConfig.getRedirectUri()) +
-               "&scope=" + encode("openid profile w_member_social") +
-               "&state=" + encode(state + ":" + restaurantId);
+               "&client_id=" + encodedClientId +
+               "&redirect_uri=" + encodedRedirectUri +
+               "&scope=" + encodedScopes +
+               "&state=" + encodedState;
     }
 
     // ─── Token Exchange ──────────────────────────────────────────────────────────
 
-    private TokenResult exchangeCodeForTokens(Platform platform, String code, Long restaurantId) {
+    private TokenResult exchangeCodeForTokens(Platform platform, String code, Long restaurantId, String pkceVerifier) {
         return switch (platform) {
             case INSTAGRAM, FACEBOOK -> exchangeMetaTokens(code);
-            case TWITTER  -> exchangeXTokens(code);
+            case TWITTER  -> exchangeXTokens(code, pkceVerifier);
             case YOUTUBE  -> exchangeGoogleTokens(code);
             case LINKEDIN -> exchangeLinkedInTokens(code);
         };
@@ -260,7 +370,7 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                     .body(Map.class);
 
             String accessToken = (String) response.get("access_token");
-            Integer expiresIn = (Integer) response.get("expires_in");
+            Integer expiresIn = response.get("expires_in") instanceof Number n ? n.intValue() : null;
 
             // Fetch account info
             Map<String, Object> meResponse = restClient.get()
@@ -280,58 +390,95 @@ public class SocialAccountServiceImpl implements SocialAccountService {
         }
     }
 
+    /**
+     * Exchanges X (Twitter) OAuth 2.0 authorization code for tokens using PKCE verifier.
+     * Supports both confidential clients (HTTP Basic auth) and public clients.
+     */
     @SuppressWarnings("unchecked")
-    private TokenResult exchangeXTokens(String code) {
+    private TokenResult exchangeXTokens(String code, String codeVerifier) {
         if (isBlank(xConfig.getClientId())) {
             throw new BadRequestException("CONFIGURATION REQUIRED: X credentials not configured.");
         }
+        if (isBlank(codeVerifier)) {
+            throw new BadRequestException("PKCE verification failure: missing code verifier for X OAuth callback.");
+        }
         try {
+            log.debug("[X OAuth] Exchanging token: redirect_uri={}, hasCodeVerifier={}, isConfidentialClient={}",
+                    xConfig.getRedirectUri(),
+                    !isBlank(codeVerifier),
+                    !isBlank(xConfig.getClientSecret()));
+
             MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
             body.add("code", code);
             body.add("grant_type", "authorization_code");
             body.add("client_id", xConfig.getClientId());
             body.add("redirect_uri", xConfig.getRedirectUri());
-            body.add("code_verifier", "challenge");
+            body.add("code_verifier", codeVerifier);
 
-            String credentials = Base64.getEncoder().encodeToString(
-                    (xConfig.getClientId() + ":" + xConfig.getClientSecret()).getBytes());
-
-            Map<String, Object> response = restClient.post()
-                    .uri("https://api.twitter.com/2/oauth2/token")
-                    .header("Authorization", "Basic " + credentials)
+            var requestSpec = restClient.post()
+                    .uri("https://api.x.com/2/oauth2/token")
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                    .body(body)
+                    .body(body);
+
+            // If confidential client (secret present), add Basic Auth header
+            if (!isBlank(xConfig.getClientSecret())) {
+                String credentials = Base64.getEncoder().encodeToString(
+                        (xConfig.getClientId() + ":" + xConfig.getClientSecret()).getBytes(StandardCharsets.UTF_8));
+                requestSpec.header("Authorization", "Basic " + credentials);
+            }
+
+            Map<String, Object> response = requestSpec
                     .retrieve()
                     .body(Map.class);
 
+            if (response == null) {
+                throw new BadRequestException("X token endpoint returned empty response.");
+            }
+
             String accessToken = (String) response.get("access_token");
             String refreshToken = (String) response.get("refresh_token");
+            Integer expiresIn = response.get("expires_in") instanceof Number n ? n.intValue() : null;
 
-            // Fetch X user info to get handle
-            Map<String, Object> userResponse = null;
+            if (isBlank(accessToken)) {
+                throw new BadRequestException("X token response did not contain an access token.");
+            }
+
+            LocalDateTime expiresAt = expiresIn != null ? LocalDateTime.now().plusSeconds(expiresIn) : null;
+
+            // Fetch X user profile: GET /2/users/me
+            String accountName = "X Account";
+            String platformAccountId = null;
             try {
-                userResponse = restClient.get()
-                        .uri("https://api.twitter.com/2/users/me")
+                Map<String, Object> userResponse = restClient.get()
+                        .uri("https://api.x.com/2/users/me")
                         .header("Authorization", "Bearer " + accessToken)
                         .retrieve()
                         .body(Map.class);
-            } catch (Exception ex) {
-                log.warn("[Social] Could not fetch X user info: {}", ex.getMessage());
-            }
 
-            String accountName = "X Account";
-            String platformAccountId = null;
-            if (userResponse != null) {
-                Map<String, Object> data = (Map<String, Object>) userResponse.get("data");
-                if (data != null) {
-                    accountName = "@" + data.getOrDefault("username", "xaccount");
-                    platformAccountId = (String) data.get("id");
+                if (userResponse != null) {
+                    Map<String, Object> data = (Map<String, Object>) userResponse.get("data");
+                    if (data != null) {
+                        String username = (String) data.get("username");
+                        if (username != null && !username.isBlank()) {
+                            accountName = "@" + username;
+                        }
+                        platformAccountId = (String) data.get("id");
+                    }
                 }
+            } catch (Exception ex) {
+                log.warn("[Social] Could not fetch X user profile: {}", ex.getMessage());
             }
 
-            return new TokenResult(accessToken, refreshToken, null, accountName, platformAccountId);
+            return new TokenResult(accessToken, refreshToken, expiresAt, accountName, platformAccountId);
+        } catch (HttpClientErrorException e) {
+            String responseBody = e.getResponseBodyAsString();
+            log.warn("[Social] X token exchange failed: HTTP {} body={}", e.getStatusCode().value(), responseBody);
+            String safeMsg = parseOAuthError(responseBody, e.getStatusCode().value());
+            throw new BadRequestException("X OAuth error: " + safeMsg);
+        } catch (BadRequestException e) {
+            throw e;
         } catch (Exception e) {
-            log.warn("[Social] X token exchange failed: {}", e.getMessage());
+            log.error("[Social] Unexpected error during X token exchange: {}", e.getMessage());
             throw new BadRequestException("Failed to exchange X authorization code: " + e.getMessage());
         }
     }
@@ -358,7 +505,7 @@ public class SocialAccountServiceImpl implements SocialAccountService {
 
             String accessToken = (String) response.get("access_token");
             String refreshToken = (String) response.get("refresh_token");
-            Integer expiresIn = (Integer) response.get("expires_in");
+            Integer expiresIn = response.get("expires_in") instanceof Number n ? n.intValue() : null;
 
             // Fetch YouTube channel name
             String channelName = "YouTube Channel";
@@ -388,6 +535,9 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                     expiresIn != null ? LocalDateTime.now().plusSeconds(expiresIn) : null,
                     channelName, channelId
             );
+        } catch (HttpClientErrorException e) {
+            log.warn("[Social] Google token exchange failed: HTTP {} body={}", e.getStatusCode().value(), e.getResponseBodyAsString());
+            throw new BadRequestException("Failed to exchange Google authorization code: " + e.getResponseBodyAsString());
         } catch (Exception e) {
             log.warn("[Social] Google token exchange failed: {}", e.getMessage());
             throw new BadRequestException("Failed to exchange Google authorization code: " + e.getMessage());
@@ -396,12 +546,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
 
     /**
      * Exchanges LinkedIn authorization code for access token.
-     *
-     * LinkedIn OAuth 2.0 token endpoint:
-     *   POST https://www.linkedin.com/oauth/v2/accessToken
-     *
-     * After getting the token, fetches the member's profile (urn:li:person:{id})
-     * using the OpenID Connect userinfo endpoint or profile API.
      */
     @SuppressWarnings("unchecked")
     private TokenResult exchangeLinkedInTokens(String code) {
@@ -424,14 +568,13 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                     .body(Map.class);
 
             String accessToken = (String) response.get("access_token");
-            Integer expiresIn = (Integer) response.get("expires_in");
+            Integer expiresIn = response.get("expires_in") instanceof Number n ? n.intValue() : null;
 
             if (accessToken == null || accessToken.isBlank()) {
                 throw new BadRequestException("LinkedIn did not return an access token.");
             }
 
             // Fetch member profile using LinkedIn userinfo endpoint (OpenID Connect)
-            // This returns the member's sub (person ID), name, etc.
             String memberName = "LinkedIn Member";
             String memberUrn = null;
             try {
@@ -442,7 +585,7 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                         .body(Map.class);
 
                 if (profileResponse != null) {
-                    String sub = (String) profileResponse.get("sub"); // LinkedIn member ID
+                    String sub = (String) profileResponse.get("sub");
                     String name = (String) profileResponse.get("name");
                     if (sub != null) {
                         memberUrn = "urn:li:person:" + sub;
@@ -453,7 +596,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                 }
             } catch (Exception ex) {
                 log.warn("[Social] Could not fetch LinkedIn profile: {}", ex.getMessage());
-                // Fallback: try the legacy /v2/me endpoint
                 try {
                     Map<String, Object> meResponse = restClient.get()
                             .uri("https://api.linkedin.com/v2/me?projection=(id,localizedFirstName,localizedLastName)")
@@ -481,12 +623,66 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                     expiresIn != null ? LocalDateTime.now().plusSeconds(expiresIn) : null,
                     memberName, memberUrn
             );
+        } catch (HttpClientErrorException e) {
+            log.warn("[Social] LinkedIn token exchange failed: HTTP {} body={}", e.getStatusCode().value(), e.getResponseBodyAsString());
+            throw new BadRequestException("Failed to exchange LinkedIn authorization code: " + e.getResponseBodyAsString());
         } catch (BadRequestException e) {
             throw e;
         } catch (Exception e) {
             log.warn("[Social] LinkedIn token exchange failed: {}", e.getMessage());
             throw new BadRequestException("Failed to exchange LinkedIn authorization code: " + e.getMessage());
         }
+    }
+
+    // ─── PKCE Cryptographic Helpers ─────────────────────────────────────────────
+
+    /**
+     * Generates a high-entropy cryptographically random PKCE code_verifier string (RFC 7636).
+     * 32 random bytes encoded as unpadded URL-safe Base64 -> 43 characters.
+     */
+    private String generatePkceVerifier() {
+        byte[] randomBytes = new byte[32];
+        SECURE_RANDOM.nextBytes(randomBytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
+    }
+
+    /**
+     * Generates an S256 code_challenge from a code_verifier (RFC 7636 Section 4.2).
+     * code_challenge = BASE64URL-ENCODE(SHA256(ASCII(code_verifier))) without padding.
+     */
+    private String generatePkceChallenge(String codeVerifier) {
+        try {
+            byte[] asciiBytes = codeVerifier.getBytes(StandardCharsets.US_ASCII);
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(asciiBytes);
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 algorithm not available for PKCE challenge generation", e);
+        }
+    }
+
+    /**
+     * Parses OAuth error bodies and returns sanitized user-friendly explanations.
+     */
+    private String parseOAuthError(String responseBody, int statusCode) {
+        if (responseBody != null && !responseBody.isBlank()) {
+            if (responseBody.contains("invalid_client")) {
+                return "Invalid client credentials. Please verify your X_CLIENT_ID and X_CLIENT_SECRET in .env and X Developer Portal.";
+            } else if (responseBody.contains("invalid_grant")) {
+                return "Authorization code or PKCE verifier is invalid/expired. Please initiate connection again.";
+            } else if (responseBody.contains("redirect_uri_mismatch") || responseBody.contains("redirect_uri")) {
+                return "Redirect URI mismatch. Ensure X_REDIRECT_URI exactly matches the Callback URL configured in X Developer Portal.";
+            } else if (responseBody.contains("unauthorized_client")) {
+                return "Unauthorized client. Ensure your app in X Developer Portal has OAuth 2.0 enabled with Read and Write permissions.";
+            } else if (responseBody.contains("error_description")) {
+                int start = responseBody.indexOf("\"error_description\":\"") + 21;
+                int end = responseBody.indexOf("\"", start);
+                if (start > 20 && end > start) {
+                    return responseBody.substring(start, end);
+                }
+            }
+        }
+        return "HTTP " + statusCode + " error during token exchange";
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────────

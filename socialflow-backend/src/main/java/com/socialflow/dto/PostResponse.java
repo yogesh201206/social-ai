@@ -16,6 +16,9 @@ public class PostResponse {
     private String title;
     private String caption;
     private String imageUrl;
+    private String mediaPath;
+    private String mediaType;
+    private String originalFileName;
     private String hashtags;
     private Platform platform;
     private Long restaurantId;
@@ -24,6 +27,7 @@ public class PostResponse {
     private String branchName;
     private PostStatus status;
     private LocalDateTime scheduledAt;
+    private String timezone;
     private LocalDateTime publishedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -31,4 +35,11 @@ public class PostResponse {
     private String platformPostId;
     /** Error message when status is FAILED */
     private String failureReason;
+    /** Real performance metrics */
+    private Long likes;
+    private Long comments;
+    private Long shares;
+    private Long views;
+    private String metricsStatus;
+    private LocalDateTime metricsUpdatedAt;
 }

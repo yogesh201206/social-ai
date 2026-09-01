@@ -4,18 +4,44 @@ import postService from '../services/postService'
 
 const PostContext = createContext()
 
-function formatScheduleDate(dateStr) {
+function toUtcDate(dateStr) {
   if (!dateStr) return null
-  const date = new Date(dateStr)
-  if (Number.isNaN(date.getTime())) return null
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  if (dateStr instanceof Date) return dateStr
+  const str = String(dateStr)
+  const isoStr = (str.endsWith('Z') || str.includes('+') || (str.includes('-') && str.lastIndexOf('-') > 10))
+    ? str
+    : `${str}Z`
+  const d = new Date(isoStr)
+  return Number.isNaN(d.getTime()) ? null : d
 }
 
-function formatScheduleTime(dateStr) {
-  if (!dateStr) return null
-  const date = new Date(dateStr)
-  if (Number.isNaN(date.getTime())) return null
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+function formatScheduleDate(dateStr, timezone = 'Asia/Kolkata') {
+  const date = toUtcDate(dateStr)
+  if (!date) return null
+  try {
+    return date.toLocaleDateString('en-US', {
+      timeZone: timezone || 'Asia/Kolkata',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  } catch (e) {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+}
+
+function formatScheduleTime(dateStr, timezone = 'Asia/Kolkata') {
+  const date = toUtcDate(dateStr)
+  if (!date) return null
+  try {
+    return date.toLocaleTimeString('en-US', {
+      timeZone: timezone || 'Asia/Kolkata',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  } catch (e) {
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  }
 }
 
 function mapPostFromBackend(p) {
@@ -24,6 +50,8 @@ function mapPostFromBackend(p) {
   const hashtags = p.hashtags
     ? (typeof p.hashtags === 'string' ? p.hashtags.split(/[\s,]+/).filter(Boolean) : p.hashtags)
     : []
+
+  const tz = p.timezone || 'Asia/Kolkata'
 
   return {
     id: String(p.id),
@@ -41,13 +69,22 @@ function mapPostFromBackend(p) {
     branch: p.branchName || '',
     status,
     scheduledAt: p.scheduledAt,
-    scheduledDate: formatScheduleDate(p.scheduledAt),
-    scheduledTime: formatScheduleTime(p.scheduledAt),
+    timezone: tz,
+    scheduledDate: formatScheduleDate(p.scheduledAt, tz),
+    scheduledTime: formatScheduleTime(p.scheduledAt, tz),
     publishedAt: p.publishedAt ? new Date(p.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null,
     createdAt: p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
     platformPostId: p.platformPostId || null,
     failureReason: p.failureReason || null,
-    metrics: p.status === 'PUBLISHED' ? { likes: 120, comments: 14, shares: 8 } : null,
+    likes: p.likes ?? null,
+    comments: p.comments ?? null,
+    shares: p.shares ?? null,
+    views: p.views ?? null,
+    metricsStatus: p.metricsStatus || 'NOT_FETCHED',
+    metricsUpdatedAt: p.metricsUpdatedAt || null,
+    metrics: (p.likes != null || p.comments != null || p.shares != null || p.views != null)
+      ? { likes: p.likes, comments: p.comments, shares: p.shares, views: p.views }
+      : null,
   }
 }
 
@@ -98,6 +135,7 @@ export function PostProvider({ children }) {
       branchId: post.branchId ? Number(post.branchId) : null,
       status: statusEnum,
       scheduledAt: scheduledAt || null,
+      timezone: post.timezone || 'Asia/Kolkata',
     }
 
     const res = await postService.create(payload)
@@ -127,6 +165,9 @@ export function PostProvider({ children }) {
     }
     if (updates.status !== undefined) {
       payload.status = updates.status.toUpperCase()
+    }
+    if (updates.timezone !== undefined) {
+      payload.timezone = updates.timezone
     }
     if (updates.scheduledAt !== undefined) {
       payload.scheduledAt = updates.scheduledAt
@@ -159,6 +200,13 @@ export function PostProvider({ children }) {
     return updatedPost
   }, [])
 
+  const refreshMetrics = useCallback(async (id) => {
+    const res = await postService.refreshMetrics(id)
+    const updatedPost = mapPostFromBackend(res)
+    setPosts((prev) => prev.map((p) => (String(p.id) === String(id) ? updatedPost : p)))
+    return updatedPost
+  }, [])
+
   const getPostsByStatus = useCallback(
     (status) => posts.filter((p) => p.status?.toLowerCase() === status?.toLowerCase()),
     [posts]
@@ -170,14 +218,22 @@ export function PostProvider({ children }) {
   )
 
   const getPerformanceOverview = useCallback(() => {
-    const published = posts.filter((p) => p.status === 'Published' && p.metrics)
-    const totalLikes = published.reduce((sum, p) => sum + (p.metrics?.likes || 0), 0)
-    const totalComments = published.reduce((sum, p) => sum + (p.metrics?.comments || 0), 0)
-    const totalShares = published.reduce((sum, p) => sum + (p.metrics?.shares || 0), 0)
-    const avgEngagement = published.length
-      ? Math.round((totalLikes + totalComments + totalShares) / published.length)
+    const publishedWithMetrics = posts.filter(
+      (p) => p.status === 'Published' && p.metrics && (p.metricsStatus === 'AVAILABLE' || p.likes != null)
+    )
+    const totalLikes = publishedWithMetrics.reduce((sum, p) => sum + (p.likes || 0), 0)
+    const totalComments = publishedWithMetrics.reduce((sum, p) => sum + (p.comments || 0), 0)
+    const totalShares = publishedWithMetrics.reduce((sum, p) => sum + (p.shares || 0), 0)
+    const avgEngagement = publishedWithMetrics.length
+      ? Math.round((totalLikes + totalComments + totalShares) / publishedWithMetrics.length)
       : 0
-    return { totalLikes, totalComments, totalShares, avgEngagement, publishedCount: published.length }
+    return {
+      totalLikes,
+      totalComments,
+      totalShares,
+      avgEngagement,
+      publishedCount: posts.filter((p) => p.status === 'Published').length,
+    }
   }, [posts])
 
   return (
@@ -192,6 +248,7 @@ export function PostProvider({ children }) {
         deletePost,
         cancelSchedule,
         publishPost,
+        refreshMetrics,
         getPostsByStatus,
         getRecentPosts,
         getPerformanceOverview,

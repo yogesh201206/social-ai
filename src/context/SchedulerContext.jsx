@@ -2,31 +2,74 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo } 
 import { useAuth } from './AuthContext'
 import schedulerService from '../services/schedulerService'
 
-function formatDisplayDate(dateStr) {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+function toUtcDate(dateStr) {
+  if (!dateStr) return null
+  if (dateStr instanceof Date) return dateStr
+  const str = String(dateStr)
+  const isoStr = (str.endsWith('Z') || str.includes('+') || (str.includes('-') && str.lastIndexOf('-') > 10))
+    ? str
+    : `${str}Z`
+  const d = new Date(isoStr)
+  return Number.isNaN(d.getTime()) ? null : d
 }
 
-function formatDisplayTime(dateStr) {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+function formatDisplayDate(dateStr, timezone = 'Asia/Kolkata') {
+  const date = toUtcDate(dateStr)
+  if (!date) return ''
+  try {
+    return date.toLocaleDateString('en-US', {
+      timeZone: timezone || 'Asia/Kolkata',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  } catch (e) {
+    return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+  }
 }
 
-function parseDatePart(dateStr) {
-  if (!dateStr) return ''
-  return dateStr.split('T')[0]
+function formatDisplayTime(dateStr, timezone = 'Asia/Kolkata') {
+  const date = toUtcDate(dateStr)
+  if (!date) return ''
+  try {
+    return date.toLocaleTimeString('en-US', {
+      timeZone: timezone || 'Asia/Kolkata',
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+  } catch (e) {
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  }
 }
 
-function parseTimeInputPart(dateStr) {
-  if (!dateStr) return '18:00'
-  const timePart = dateStr.includes('T') ? dateStr.split('T')[1] : ''
-  if (!timePart) return '18:00'
-  const parts = timePart.split(':')
-  return `${parts[0] || '18'}:${parts[1] || '00'}`
+function parseDatePart(dateStr, timezone = 'Asia/Kolkata') {
+  const date = toUtcDate(dateStr)
+  if (!date) return ''
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone || 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date)
+  } catch (e) {
+    return date.toISOString().split('T')[0]
+  }
+}
+
+function parseTimeInputPart(dateStr, timezone = 'Asia/Kolkata') {
+  const date = toUtcDate(dateStr)
+  if (!date) return '18:00'
+  try {
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone || 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(date)
+  } catch (e) {
+    return '18:00'
+  }
 }
 
 function mapScheduleFromBackend(s) {
@@ -40,6 +83,8 @@ function mapScheduleFromBackend(s) {
     ? 'Published'
     : 'Scheduled'
 
+  const tz = s.timezone || 'Asia/Kolkata'
+
   return {
     id: String(s.id),
     postId: s.postId ? String(s.postId) : null,
@@ -51,11 +96,11 @@ function mapScheduleFromBackend(s) {
     platforms: [platform],
     platform,
     scheduledDateTime: s.scheduledDateTime,
-    scheduledDate: parseDatePart(s.scheduledDateTime),
-    scheduledDateDisplay: formatDisplayDate(s.scheduledDateTime),
-    scheduledTimeInput: parseTimeInputPart(s.scheduledDateTime),
-    scheduledTime: formatDisplayTime(s.scheduledDateTime),
-    timezone: s.timezone || 'UTC',
+    scheduledDate: parseDatePart(s.scheduledDateTime, tz),
+    scheduledDateDisplay: formatDisplayDate(s.scheduledDateTime, tz),
+    scheduledTimeInput: parseTimeInputPart(s.scheduledDateTime, tz),
+    scheduledTime: formatDisplayTime(s.scheduledDateTime, tz),
+    timezone: tz,
     status,
     createdAt: s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
   }
@@ -96,7 +141,7 @@ export function SchedulerProvider({ children }) {
       branchId: post.branchId ? Number(post.branchId) : null,
       platform,
       scheduledDateTime,
-      timezone: post.timezone || 'UTC',
+      timezone: post.timezone || 'Asia/Kolkata',
       status: (post.status || 'SCHEDULED').toUpperCase(),
     }
 

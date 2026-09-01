@@ -14,7 +14,8 @@ public interface PostService {
     void deletePost(Long id, String currentUserEmail, boolean isAdmin);
 
     List<PostResponse> getPostsByStatus(PostStatus status, String currentUserEmail, boolean isAdmin);
-    PostResponse schedulePost(Long id, String scheduledAt, String currentUserEmail, boolean isAdmin);
+    PostResponse schedulePost(Long id, String scheduledAt, String timezone, String currentUserEmail, boolean isAdmin);
     PostResponse cancelPost(Long id, String currentUserEmail, boolean isAdmin);
     PostResponse publishPost(Long id, String currentUserEmail, boolean isAdmin);
+    PostResponse refreshMetrics(Long id, String currentUserEmail, boolean isAdmin);
 }

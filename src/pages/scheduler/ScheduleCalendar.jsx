@@ -233,7 +233,7 @@ export default function ScheduleCalendar({ onSelectPost, initialView = 'month', 
   const { scheduledPosts } = useScheduler()
   const displayPosts = posts || scheduledPosts
   const [view, setView] = useState(initialView)
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 7, 10))
+  const [currentDate, setCurrentDate] = useState(() => new Date())
 
   const postsByDate = useMemo(() => {
     const map = {}

@@ -75,7 +75,7 @@ Phase 9 successfully delivers the complete **Spring Boot backend** and **MySQL d
    ```bash
    mvn spring-boot:run
    ```
-   *(By default, connects to MySQL `socialflow_ai` or falls back gracefully to H2 in-memory DB at port `8080`)*
+   *(Connects to MySQL `socialflow` at port `8080`)*
 
 ### Running the Frontend
 1. In `socialflow-ai` root directory:
@@ -86,11 +86,28 @@ Phase 9 successfully delivers the complete **Spring Boot backend** and **MySQL d
 
 ---
 
-## Postman / API Testing
+## Scheduled Post Timezone & Timing Fix Walkthrough
 
-- `POST /api/auth/register`: `{ "name": "John", "email": "john@test.com", "password": "password123" }`
-- `POST /api/auth/login`: `{ "email": "user@socialflow.ai", "password": "password123" }`
-- `GET /api/auth/me`: Returns current authenticated user details.
-- `GET /api/restaurants`: Returns user restaurants.
-- `GET /api/posts`: Returns posts list.
-- `GET /api/admin/dashboard`: Returns admin metrics (requires `ROLE_ADMIN`).
+### 1. Root Cause
+- The frontend was sending local datetime strings (e.g. `2026-09-02T00:05:00`), which were saved directly into MySQL without converting from the selected timezone (`Asia/Kolkata` IST) to UTC (`2026-09-01T18:35:00Z`).
+- The scheduler job `ScheduledPostPublisherJob` was querying against UTC (`LocalDateTime.now(ZoneOffset.UTC)` or `NOW() = 18:35:00 UTC`), causing the scheduler to treat `2026-09-02 00:05:00` as 5 hours and 30 minutes in the future.
+- Slicing and parsing in frontend displayed raw string parts without localization.
+
+### 2. Timezone Conversion Flow
+```
+User Local Selection (e.g. 02 Sep 2026, 12:05 AM IST)
+                  ↓
+Frontend sends: scheduledDateTime: "2026-09-02T00:05:00", timezone: "Asia/Kolkata"
+                  ↓
+Backend converts using ZoneId.of("Asia/Kolkata") -> UTC Instant -> 2026-09-01 18:35:00 UTC
+                  ↓
+Saved in MySQL database as: 2026-09-01 18:35:00 (UTC) + timezone: "Asia/Kolkata"
+                  ↓
+ScheduledPostPublisherJob: scheduledDateTime <= LocalDateTime.now(ZoneOffset.UTC)
+                  ↓
+At 12:05:00 AM IST (18:35:00 UTC): Job matches due post, transitions SCHEDULED -> PROCESSING -> PUBLISHED
+                  ↓
+Frontend fetches post and uses Intl.DateTimeFormat with post timezone:
+Displays: "02 Sep 2026, 12:05 AM IST"
+```
+

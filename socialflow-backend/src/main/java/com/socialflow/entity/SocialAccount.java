@@ -73,6 +73,13 @@ public class SocialAccount {
     private String oauthState;
 
     /**
+     * PKCE code_verifier for OAuth 2.0 PKCE flow (e.g., X/Twitter).
+     * Cleared after OAuth callback completes.
+     */
+    @Column(name = "pkce_code_verifier", length = 200)
+    private String pkceCodeVerifier;
+
+    /**
      * Optional: platformPostId of the most recently published post (for reference).
      */
     @Column(name = "last_platform_post_id", length = 200)

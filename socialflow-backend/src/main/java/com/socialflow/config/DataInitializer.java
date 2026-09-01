@@ -99,8 +99,8 @@ public class DataInitializer implements CommandLineRunner {
                     .restaurant(r1)
                     .branch(b1)
                     .platform(Platform.INSTAGRAM)
-                    .scheduledDateTime(java.time.LocalDateTime.now().plusDays(2))
-                    .timezone("America/New_York")
+                    .scheduledDateTime(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC).plusDays(2))
+                    .timezone("Asia/Kolkata")
                     .status(ScheduleStatus.SCHEDULED)
                     .build();
             scheduledPostRepository.save(sp1);

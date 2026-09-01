@@ -11,6 +11,7 @@ import com.socialflow.repository.PostRepository;
 import com.socialflow.repository.RestaurantRepository;
 import com.socialflow.repository.ScheduledPostRepository;
 import com.socialflow.repository.SocialAccountRepository;
+import com.socialflow.service.MediaStorageService;
 import com.socialflow.service.PostService;
 import com.socialflow.service.publisher.PublishResult;
 import com.socialflow.service.publisher.SocialMediaPublisher;
@@ -21,6 +22,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -35,6 +39,20 @@ public class PostServiceImpl implements PostService {
     private final ScheduledPostRepository scheduledPostRepository;
     private final SocialAccountRepository socialAccountRepository;
     private final SocialMediaPublisherFactory publisherFactory;
+    private final MediaStorageService mediaStorageService;
+
+    private LocalDateTime convertToUtc(LocalDateTime localDateTime, String timezone) {
+        if (localDateTime == null) return null;
+        String tz = (timezone != null && !timezone.isBlank()) ? timezone : "Asia/Kolkata";
+        ZoneId zoneId;
+        try {
+            zoneId = ZoneId.of(tz);
+        } catch (Exception e) {
+            zoneId = ZoneId.of("Asia/Kolkata");
+        }
+        ZonedDateTime userZoned = localDateTime.atZone(zoneId);
+        return userZoned.withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+    }
 
     @Override
     public List<PostResponse> getAllPosts(String currentUserEmail, boolean isAdmin) {
@@ -90,36 +108,52 @@ public class PostServiceImpl implements PostService {
 
         PostStatus status = request.getStatus() != null ? request.getStatus() : PostStatus.DRAFT;
         LocalDateTime scheduledAt = request.getScheduledAt();
+        String tzStr = (request.getTimezone() != null && !request.getTimezone().isBlank())
+                ? request.getTimezone()
+                : "Asia/Kolkata";
+        LocalDateTime utcScheduledAt = null;
 
         if (status == PostStatus.SCHEDULED && scheduledAt != null) {
-            if (scheduledAt.isBefore(LocalDateTime.now().minusMinutes(1))) {
+            utcScheduledAt = convertToUtc(scheduledAt, tzStr);
+            if (utcScheduledAt.isBefore(LocalDateTime.now(ZoneOffset.UTC).minusMinutes(1))) {
                 throw new BadRequestException("Scheduled date/time must be in the future");
             }
+        } else if (scheduledAt != null) {
+            utcScheduledAt = convertToUtc(scheduledAt, tzStr);
+        }
+
+        String storedMediaPath = request.getMediaPath();
+        if (status == PostStatus.SCHEDULED && storedMediaPath != null) {
+            storedMediaPath = mediaStorageService.promoteToScheduled(storedMediaPath);
         }
 
         Post post = Post.builder()
                 .title(request.getTitle())
                 .caption(request.getCaption())
                 .imageUrl(request.getImageUrl())
+                .mediaPath(storedMediaPath)
+                .mediaType(request.getMediaType())
+                .originalFileName(request.getOriginalFileName())
                 .hashtags(request.getHashtags())
                 .platform(request.getPlatform())
                 .restaurant(restaurant)
                 .branch(branch)
                 .status(status)
-                .scheduledAt(scheduledAt)
+                .scheduledAt(utcScheduledAt)
+                .timezone(tzStr)
                 .build();
 
         Post savedPost = postRepository.save(post);
 
         // Sync with scheduled_posts if scheduled
-        if (status == PostStatus.SCHEDULED && scheduledAt != null) {
+        if (status == PostStatus.SCHEDULED && utcScheduledAt != null) {
             ScheduledPost scheduledPost = ScheduledPost.builder()
                     .post(savedPost)
                     .restaurant(restaurant)
                     .branch(branch)
                     .platform(savedPost.getPlatform())
-                    .scheduledDateTime(scheduledAt)
-                    .timezone("UTC")
+                    .scheduledDateTime(utcScheduledAt)
+                    .timezone(tzStr)
                     .status(ScheduleStatus.SCHEDULED)
                     .build();
             scheduledPostRepository.save(scheduledPost);
@@ -146,6 +180,15 @@ public class PostServiceImpl implements PostService {
         }
         if (request.getCaption() != null) post.setCaption(request.getCaption());
         if (request.getImageUrl() != null) post.setImageUrl(request.getImageUrl());
+        if (request.getMediaPath() != null) {
+            String path = request.getMediaPath();
+            if ((request.getStatus() == PostStatus.SCHEDULED || post.getStatus() == PostStatus.SCHEDULED)) {
+                path = mediaStorageService.promoteToScheduled(path);
+            }
+            post.setMediaPath(path);
+        }
+        if (request.getMediaType() != null) post.setMediaType(request.getMediaType());
+        if (request.getOriginalFileName() != null) post.setOriginalFileName(request.getOriginalFileName());
         if (request.getHashtags() != null) post.setHashtags(request.getHashtags());
         if (request.getPlatform() != null) post.setPlatform(request.getPlatform());
 
@@ -169,12 +212,21 @@ public class PostServiceImpl implements PostService {
 
         if (request.getStatus() != null) post.setStatus(request.getStatus());
 
+        String tzStr = (request.getTimezone() != null && !request.getTimezone().isBlank())
+                ? request.getTimezone()
+                : (post.getTimezone() != null ? post.getTimezone() : "Asia/Kolkata");
+
+        if (request.getTimezone() != null) {
+            post.setTimezone(tzStr);
+        }
+
         if (request.getScheduledAt() != null) {
+            LocalDateTime utcScheduledAt = convertToUtc(request.getScheduledAt(), tzStr);
             if ((post.getStatus() == PostStatus.SCHEDULED || request.getStatus() == PostStatus.SCHEDULED)
-                    && request.getScheduledAt().isBefore(LocalDateTime.now().minusMinutes(1))) {
+                    && utcScheduledAt.isBefore(LocalDateTime.now(ZoneOffset.UTC).minusMinutes(1))) {
                 throw new BadRequestException("Scheduled date/time must be in the future");
             }
-            post.setScheduledAt(request.getScheduledAt());
+            post.setScheduledAt(utcScheduledAt);
         }
 
         Post savedPost = postRepository.save(post);
@@ -188,6 +240,7 @@ public class PostServiceImpl implements PostService {
                 sp.setRestaurant(savedPost.getRestaurant());
                 sp.setBranch(savedPost.getBranch());
                 sp.setScheduledDateTime(savedPost.getScheduledAt());
+                sp.setTimezone(savedPost.getTimezone() != null ? savedPost.getTimezone() : tzStr);
                 sp.setStatus(ScheduleStatus.SCHEDULED);
                 scheduledPostRepository.save(sp);
             } else {
@@ -197,7 +250,7 @@ public class PostServiceImpl implements PostService {
                         .branch(savedPost.getBranch())
                         .platform(savedPost.getPlatform())
                         .scheduledDateTime(savedPost.getScheduledAt())
-                        .timezone("UTC")
+                        .timezone(savedPost.getTimezone() != null ? savedPost.getTimezone() : tzStr)
                         .status(ScheduleStatus.SCHEDULED)
                         .build();
                 scheduledPostRepository.save(sp);
@@ -229,6 +282,29 @@ public class PostServiceImpl implements PostService {
             throw new UnauthorizedException("Not authorized");
         }
 
+        // If post was published to a platform and has a platformPostId, sync deletion with external platform
+        if (post.getStatus() == PostStatus.PUBLISHED && post.getPlatformPostId() != null && !post.getPlatformPostId().isBlank()) {
+            Platform platform = post.getPlatform();
+            if (platform != null) {
+                var accountOpt = socialAccountRepository.findByRestaurantIdAndPlatform(post.getRestaurant().getId(), platform);
+                if (accountOpt.isPresent() && Boolean.TRUE.equals(accountOpt.get().getIsConnected())) {
+                    SocialAccount account = accountOpt.get();
+                    SocialMediaPublisher publisher = publisherFactory.getPublisher(platform);
+                    var deleteResult = publisher.delete(post, account);
+                    if (!deleteResult.success()) {
+                        log.warn("[Delete] External deletion failed on {} for post id={}: {}", platform, id, deleteResult.errorMessage());
+                        throw new BadRequestException("Could not delete the post from " + platform.name() + ": " +
+                                deleteResult.errorMessage() + ". The SocialFlow record was kept so you can retry.");
+                    }
+                }
+            }
+        }
+
+        // Delete any temporary / scheduled local media file
+        if (post.getMediaPath() != null && !post.getMediaPath().isBlank()) {
+            mediaStorageService.deleteMediaFile(post.getMediaPath());
+        }
+
         // Delete any related scheduled posts first to avoid foreign key constraints / orphan rows
         scheduledPostRepository.deleteByPostId(id);
         postRepository.delete(post);
@@ -247,7 +323,7 @@ public class PostServiceImpl implements PostService {
 
     @Override
     @Transactional
-    public PostResponse schedulePost(Long id, String scheduledAt, String currentUserEmail, boolean isAdmin) {
+    public PostResponse schedulePost(Long id, String scheduledAt, String timezone, String currentUserEmail, boolean isAdmin) {
         Post post = postRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found with id: " + id));
 
@@ -255,20 +331,39 @@ public class PostServiceImpl implements PostService {
             throw new UnauthorizedException("Not authorized");
         }
 
-        LocalDateTime parsed = null;
+        if (post.getPlatform() == Platform.YOUTUBE) {
+            if ((post.getImageUrl() == null || post.getImageUrl().isBlank()) &&
+                (post.getMediaPath() == null || post.getMediaPath().isBlank())) {
+                throw new BadRequestException("YouTube publishing requires a video.");
+            }
+        }
+
+        String tzStr = (timezone != null && !timezone.isBlank())
+                ? timezone
+                : (post.getTimezone() != null ? post.getTimezone() : "Asia/Kolkata");
+
+        LocalDateTime utcScheduledAt = null;
         if (scheduledAt != null) {
-            parsed = LocalDateTime.parse(scheduledAt);
-            if (parsed.isBefore(LocalDateTime.now().minusMinutes(1))) {
+            LocalDateTime parsed = LocalDateTime.parse(scheduledAt);
+            utcScheduledAt = convertToUtc(parsed, tzStr);
+            if (utcScheduledAt.isBefore(LocalDateTime.now(ZoneOffset.UTC).minusMinutes(1))) {
                 throw new BadRequestException("Scheduled date/time must be in the future");
             }
-            post.setScheduledAt(parsed);
+            post.setScheduledAt(utcScheduledAt);
+            post.setTimezone(tzStr);
         } else if (post.getScheduledAt() != null) {
-            parsed = post.getScheduledAt();
-            if (parsed.isBefore(LocalDateTime.now().minusMinutes(1))) {
+            utcScheduledAt = post.getScheduledAt();
+            if (utcScheduledAt.isBefore(LocalDateTime.now(ZoneOffset.UTC).minusMinutes(1))) {
                 throw new BadRequestException("Scheduled date/time must be in the future");
             }
         } else {
             throw new BadRequestException("Scheduled date/time is required");
+        }
+
+        // Promote media file to scheduled storage
+        if (post.getMediaPath() != null && !post.getMediaPath().isBlank()) {
+            String promoted = mediaStorageService.promoteToScheduled(post.getMediaPath());
+            post.setMediaPath(promoted);
         }
 
         post.setStatus(PostStatus.SCHEDULED);
@@ -277,7 +372,8 @@ public class PostServiceImpl implements PostService {
         List<ScheduledPost> existingSchedules = scheduledPostRepository.findByPostId(id);
         if (!existingSchedules.isEmpty()) {
             ScheduledPost sp = existingSchedules.get(0);
-            sp.setScheduledDateTime(parsed);
+            sp.setScheduledDateTime(utcScheduledAt);
+            sp.setTimezone(tzStr);
             sp.setPlatform(saved.getPlatform());
             sp.setRestaurant(saved.getRestaurant());
             sp.setBranch(saved.getBranch());
@@ -289,8 +385,8 @@ public class PostServiceImpl implements PostService {
                     .restaurant(saved.getRestaurant())
                     .branch(saved.getBranch())
                     .platform(saved.getPlatform())
-                    .scheduledDateTime(parsed)
-                    .timezone("UTC")
+                    .scheduledDateTime(utcScheduledAt)
+                    .timezone(tzStr)
                     .status(ScheduleStatus.SCHEDULED)
                     .build();
             scheduledPostRepository.save(sp);
@@ -307,6 +403,12 @@ public class PostServiceImpl implements PostService {
 
         if (!isAdmin && !post.getRestaurant().getOwner().getEmail().equalsIgnoreCase(currentUserEmail)) {
             throw new UnauthorizedException("Not authorized");
+        }
+
+        // Delete stored scheduled video file on cancellation
+        if (post.getMediaPath() != null && !post.getMediaPath().isBlank()) {
+            mediaStorageService.deleteMediaFile(post.getMediaPath());
+            post.setMediaPath(null);
         }
 
         post.setStatus(PostStatus.CANCELLED);
@@ -338,10 +440,17 @@ public class PostServiceImpl implements PostService {
             throw new BadRequestException("Post is already being processed");
         }
 
-        // Look up connected social account for this restaurant + platform
         Platform platform = post.getPlatform();
         if (platform == null) {
             throw new BadRequestException("Post has no platform set. Cannot publish.");
+        }
+
+        // YouTube special validation
+        if (platform == Platform.YOUTUBE) {
+            if ((post.getImageUrl() == null || post.getImageUrl().isBlank()) &&
+                (post.getMediaPath() == null || post.getMediaPath().isBlank())) {
+                throw new BadRequestException("YouTube publishing requires a video.");
+            }
         }
 
         SocialAccount account = socialAccountRepository
@@ -370,9 +479,16 @@ public class PostServiceImpl implements PostService {
 
         if (result.success()) {
             post.setStatus(PostStatus.PUBLISHED);
-            post.setPublishedAt(LocalDateTime.now());
+            post.setPublishedAt(LocalDateTime.now(ZoneOffset.UTC));
             post.setPlatformPostId(result.platformPostId());
             post.setFailureReason(null);
+
+            // Clean up temporary/scheduled local video file after successful publish
+            if (post.getMediaPath() != null && !post.getMediaPath().isBlank()) {
+                mediaStorageService.deleteMediaFile(post.getMediaPath());
+                post.setMediaPath(null);
+            }
+
             log.info("[Publish] Post id={} published to {} — platformPostId={}",
                     id, platform, result.platformPostId());
         } else {
@@ -397,12 +513,60 @@ public class PostServiceImpl implements PostService {
         return mapToPostResponse(saved);
     }
 
+    @Override
+    @Transactional
+    public PostResponse refreshMetrics(Long id, String currentUserEmail, boolean isAdmin) {
+        Post post = postRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Post not found with id: " + id));
+
+        if (!isAdmin && !post.getRestaurant().getOwner().getEmail().equalsIgnoreCase(currentUserEmail)) {
+            throw new UnauthorizedException("Not authorized");
+        }
+
+        if (post.getStatus() != PostStatus.PUBLISHED || post.getPlatformPostId() == null || post.getPlatformPostId().isBlank()) {
+            post.setMetricsStatus("NOT_FETCHED");
+            return mapToPostResponse(postRepository.save(post));
+        }
+
+        Platform platform = post.getPlatform();
+        if (platform == null) {
+            post.setMetricsStatus("NOT_SUPPORTED");
+            return mapToPostResponse(postRepository.save(post));
+        }
+
+        var accountOpt = socialAccountRepository.findByRestaurantIdAndPlatform(post.getRestaurant().getId(), platform);
+        if (accountOpt.isEmpty() || !Boolean.TRUE.equals(accountOpt.get().getIsConnected())) {
+            post.setMetricsStatus("PERMISSION_REQUIRED");
+            return mapToPostResponse(postRepository.save(post));
+        }
+
+        SocialAccount account = accountOpt.get();
+        SocialMediaPublisher publisher = publisherFactory.getPublisher(platform);
+        var metricsResult = publisher.fetchMetrics(post, account);
+
+        if (metricsResult.success()) {
+            post.setLikes(metricsResult.likes());
+            post.setComments(metricsResult.comments());
+            post.setShares(metricsResult.shares());
+            post.setViews(metricsResult.views());
+            post.setMetricsStatus(metricsResult.metricsStatus());
+            post.setMetricsUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
+        } else {
+            post.setMetricsStatus(metricsResult.metricsStatus() != null ? metricsResult.metricsStatus() : "API_ERROR");
+        }
+
+        return mapToPostResponse(postRepository.save(post));
+    }
+
     private PostResponse mapToPostResponse(Post p) {
         return PostResponse.builder()
                 .id(p.getId())
                 .title(p.getTitle())
                 .caption(p.getCaption())
                 .imageUrl(p.getImageUrl())
+                .mediaPath(p.getMediaPath())
+                .mediaType(p.getMediaType())
+                .originalFileName(p.getOriginalFileName())
                 .hashtags(p.getHashtags())
                 .platform(p.getPlatform())
                 .restaurantId(p.getRestaurant().getId())
@@ -411,11 +575,19 @@ public class PostServiceImpl implements PostService {
                 .branchName(p.getBranch() != null ? p.getBranch().getBranchName() : null)
                 .status(p.getStatus())
                 .scheduledAt(p.getScheduledAt())
+                .timezone(p.getTimezone())
                 .publishedAt(p.getPublishedAt())
                 .platformPostId(p.getPlatformPostId())
                 .failureReason(p.getFailureReason())
+                .likes(p.getLikes())
+                .comments(p.getComments())
+                .shares(p.getShares())
+                .views(p.getViews())
+                .metricsStatus(p.getMetricsStatus())
+                .metricsUpdatedAt(p.getMetricsUpdatedAt())
                 .createdAt(p.getCreatedAt())
                 .updatedAt(p.getUpdatedAt())
                 .build();
     }
 }
+

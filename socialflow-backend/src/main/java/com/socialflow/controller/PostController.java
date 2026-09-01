@@ -81,7 +81,8 @@ public class PostController {
     public ResponseEntity<PostResponse> schedulePost(@PathVariable Long id, @RequestBody(required = false) Map<String, String> body, Authentication authentication) {
         String email = authentication != null ? authentication.getName() : "";
         String scheduledAt = body != null ? body.get("scheduledAt") : null;
-        return ResponseEntity.ok(postService.schedulePost(id, scheduledAt, email, isAdmin(authentication)));
+        String timezone = body != null ? body.get("timezone") : null;
+        return ResponseEntity.ok(postService.schedulePost(id, scheduledAt, timezone, email, isAdmin(authentication)));
     }
 
     @PostMapping("/{id}/cancel")
@@ -99,5 +100,15 @@ public class PostController {
     public ResponseEntity<PostResponse> publishPost(@PathVariable Long id, Authentication authentication) {
         String email = authentication != null ? authentication.getName() : "";
         return ResponseEntity.ok(postService.publishPost(id, email, isAdmin(authentication)));
+    }
+
+    /**
+     * POST /api/posts/{id}/metrics
+     * Fetches real performance metrics from the connected social media platform.
+     */
+    @PostMapping("/{id}/metrics")
+    public ResponseEntity<PostResponse> refreshMetrics(@PathVariable Long id, Authentication authentication) {
+        String email = authentication != null ? authentication.getName() : "";
+        return ResponseEntity.ok(postService.refreshMetrics(id, email, isAdmin(authentication)));
     }
 }

@@ -16,6 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -27,6 +30,19 @@ public class ScheduledPostServiceImpl implements ScheduledPostService {
     private final PostRepository postRepository;
     private final RestaurantRepository restaurantRepository;
     private final BranchRepository branchRepository;
+
+    private LocalDateTime convertToUtc(LocalDateTime localDateTime, String timezone) {
+        if (localDateTime == null) return null;
+        String tz = (timezone != null && !timezone.isBlank()) ? timezone : "Asia/Kolkata";
+        ZoneId zoneId;
+        try {
+            zoneId = ZoneId.of(tz);
+        } catch (Exception e) {
+            zoneId = ZoneId.of("Asia/Kolkata");
+        }
+        ZonedDateTime userZoned = localDateTime.atZone(zoneId);
+        return userZoned.withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+    }
 
     @Override
     public List<ScheduleResponse> getAllSchedules(String currentUserEmail, boolean isAdmin) {
@@ -63,7 +79,13 @@ public class ScheduledPostServiceImpl implements ScheduledPostService {
         if (request.getScheduledDateTime() == null) {
             throw new BadRequestException("Scheduled date time is required");
         }
-        if (request.getScheduledDateTime().isBefore(LocalDateTime.now().minusMinutes(1))) {
+
+        String tzStr = (request.getTimezone() != null && !request.getTimezone().isBlank())
+                ? request.getTimezone()
+                : "Asia/Kolkata";
+        LocalDateTime utcDateTime = convertToUtc(request.getScheduledDateTime(), tzStr);
+
+        if (utcDateTime.isBefore(LocalDateTime.now(ZoneOffset.UTC).minusMinutes(1))) {
             throw new BadRequestException("Scheduled date and time must be in the future");
         }
 
@@ -91,7 +113,8 @@ public class ScheduledPostServiceImpl implements ScheduledPostService {
                 throw new UnauthorizedException("Not authorized to schedule this post");
             }
             post.setStatus(PostStatus.SCHEDULED);
-            post.setScheduledAt(request.getScheduledDateTime());
+            post.setScheduledAt(utcDateTime);
+            post.setTimezone(tzStr);
             postRepository.save(post);
         }
 
@@ -100,8 +123,8 @@ public class ScheduledPostServiceImpl implements ScheduledPostService {
                 .restaurant(restaurant)
                 .branch(branch)
                 .platform(request.getPlatform())
-                .scheduledDateTime(request.getScheduledDateTime())
-                .timezone(request.getTimezone() != null ? request.getTimezone() : "UTC")
+                .scheduledDateTime(utcDateTime)
+                .timezone(tzStr)
                 .status(request.getStatus() != null ? request.getStatus() : ScheduleStatus.SCHEDULED)
                 .build();
 
@@ -138,14 +161,19 @@ public class ScheduledPostServiceImpl implements ScheduledPostService {
 
         if (request.getPlatform() != null) schedule.setPlatform(request.getPlatform());
 
+        String tzStr = (request.getTimezone() != null && !request.getTimezone().isBlank())
+                ? request.getTimezone()
+                : (schedule.getTimezone() != null ? schedule.getTimezone() : "Asia/Kolkata");
+
         if (request.getScheduledDateTime() != null) {
-            if (request.getScheduledDateTime().isBefore(LocalDateTime.now().minusMinutes(1))) {
+            LocalDateTime utcDateTime = convertToUtc(request.getScheduledDateTime(), tzStr);
+            if (utcDateTime.isBefore(LocalDateTime.now(ZoneOffset.UTC).minusMinutes(1))) {
                 throw new BadRequestException("Scheduled date and time must be in the future");
             }
-            schedule.setScheduledDateTime(request.getScheduledDateTime());
+            schedule.setScheduledDateTime(utcDateTime);
         }
 
-        if (request.getTimezone() != null) schedule.setTimezone(request.getTimezone());
+        if (request.getTimezone() != null) schedule.setTimezone(tzStr);
         if (request.getStatus() != null) schedule.setStatus(request.getStatus());
 
         ScheduledPost saved = scheduledPostRepository.save(schedule);
@@ -155,6 +183,7 @@ public class ScheduledPostServiceImpl implements ScheduledPostService {
             if (saved.getStatus() == ScheduleStatus.SCHEDULED) {
                 post.setStatus(PostStatus.SCHEDULED);
                 post.setScheduledAt(saved.getScheduledDateTime());
+                post.setTimezone(saved.getTimezone());
             } else if (saved.getStatus() == ScheduleStatus.CANCELLED) {
                 post.setStatus(PostStatus.CANCELLED);
             } else if (saved.getStatus() == ScheduleStatus.PUBLISHED) {

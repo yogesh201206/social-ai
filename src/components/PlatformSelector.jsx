@@ -4,6 +4,15 @@ import { platforms, platformIcons, platformColors } from '../data/postsData'
 // Platforms that are Coming Soon (Meta Business verification required)
 const COMING_SOON_PLATFORMS = ['Instagram', 'Facebook']
 
+// UI display labels — value (key) stays as backend-compatible enum name
+const platformDisplayLabels = {
+  Instagram: 'Instagram',
+  Facebook: 'Facebook',
+  Twitter: 'X (Twitter)',
+  LinkedIn: 'LinkedIn',
+  YouTube: 'YouTube',
+}
+
 export default function PlatformSelector({ value, onChange, multiple = false, connectedPlatforms = [] }) {
   const selected = multiple ? (value || []) : value
 
@@ -47,7 +56,7 @@ export default function PlatformSelector({ value, onChange, multiple = false, co
                   <Icon className="h-4 w-4 text-white" />
                 </div>
                 <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  {platform}
+                  {platformDisplayLabels[platform] || platform}
                 </span>
               </div>
               <span className="mt-2 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-200 dark:border-amber-700/40">
@@ -73,7 +82,7 @@ export default function PlatformSelector({ value, onChange, multiple = false, co
             </div>
             <div className="text-center">
               <span className={`block text-xs font-semibold ${active ? 'text-brand-600 dark:text-brand-400' : 'text-gray-800 dark:text-gray-200'}`}>
-                {platform}
+                {platformDisplayLabels[platform] || platform}
               </span>
               <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
                 Active

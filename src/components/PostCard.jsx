@@ -31,7 +31,9 @@ export default function PostCard({ post, onDelete }) {
         <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200/50 dark:border-gray-700/50">
           <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
             <Calendar className="h-3.5 w-3.5" />
-            {post.createdAt}
+            {post.status?.toLowerCase() === 'scheduled' && post.scheduledDate
+              ? `${post.scheduledDate}${post.scheduledTime ? ` · ${post.scheduledTime}` : ''}`
+              : post.createdAt}
           </div>
           <span className="text-xs font-medium text-gray-600 dark:text-gray-300">{post.platform}</span>
         </div>

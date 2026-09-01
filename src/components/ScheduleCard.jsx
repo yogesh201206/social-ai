@@ -36,11 +36,14 @@ export default function ScheduleCard({ post, onCancel }) {
           <div className="flex flex-wrap items-center gap-4 mt-4">
             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
               <Calendar className="h-4 w-4 text-brand-500" />
-              <span className="font-medium">{post.scheduledDate}</span>
+              <span className="font-medium">{post.scheduledDateDisplay || post.scheduledDate}</span>
             </div>
             <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
               <Clock className="h-4 w-4 text-brand-500" />
-              <span className="font-medium">{post.scheduledTime}</span>
+              <span className="font-medium">
+                {post.scheduledTime}
+                {post.timezone === 'Asia/Kolkata' ? ' IST' : post.timezone ? ` (${post.timezone.split('/')[1] || post.timezone})` : ''}
+              </span>
             </div>
             <span className="text-xs px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
               {post.platform}

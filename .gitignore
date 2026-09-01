@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Uploaded Media Storage
+uploads/
+uploads/temp/
+uploads/scheduled/
+socialflow-backend/uploads/
+socialflow-backend/uploads/temp/
+socialflow-backend/uploads/scheduled/
+socialflow-backend/target/

@@ -25,6 +25,18 @@ public class Post {
 
     private String imageUrl;
 
+    /** Safe relative local storage path (e.g. uploads/scheduled/youtube/uuid.mp4 or uploads/temp/youtube/uuid.mp4) */
+    @Column(name = "media_path", length = 500)
+    private String mediaPath;
+
+    /** MIME type of media (e.g. video/mp4, image/jpeg) */
+    @Column(name = "media_type", length = 50)
+    private String mediaType;
+
+    /** Original client file name (for display / reference) */
+    @Column(name = "original_file_name", length = 255)
+    private String originalFileName;
+
     private String hashtags;
 
     @Enumerated(EnumType.STRING)
@@ -44,6 +56,8 @@ public class Post {
 
     private LocalDateTime scheduledAt;
 
+    private String timezone;
+
     private LocalDateTime publishedAt;
 
     /** Platform post ID returned by the social media API after successful publishing */
@@ -53,6 +67,21 @@ public class Post {
     /** Safe error message when status is FAILED */
     @Column(name = "failure_reason", length = 500)
     private String failureReason;
+
+    /** Real performance metrics fetched from social APIs */
+    private Long likes;
+
+    private Long comments;
+
+    private Long shares;
+
+    private Long views;
+
+    /** Metric status: AVAILABLE, NOT_FETCHED, NOT_SUPPORTED, PERMISSION_REQUIRED, API_ERROR */
+    @Column(name = "metrics_status", length = 50)
+    private String metricsStatus;
+
+    private LocalDateTime metricsUpdatedAt;
 
     private LocalDateTime createdAt;
 

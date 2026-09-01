@@ -36,6 +36,17 @@ export default function SettingsPanel() {
     confirm: '',
   })
 
+  // Auto-switch to social tab if redirected from OAuth callback
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('connected') || params.get('error')) {
+      setActiveTab('social')
+      if (params.get('error')) {
+        setSocialError(`Connection cancelled or failed: ${params.get('error')}`)
+      }
+    }
+  }, [])
+
   // Load social accounts when tab is opened
   useEffect(() => {
     if (activeTab === 'social') {

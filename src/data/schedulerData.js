@@ -139,7 +139,7 @@ export const initialScheduledPosts = [
     branchId: 'b11',
     branchName: 'Marina Branch',
     branchCity: 'Chennai',
-    platforms: ['Facebook', 'Twitter(X)'],
+    platforms: ['Facebook', 'Twitter'],
     scheduledDate: '2026-08-10',
     scheduledDateDisplay: 'August 10, 2026',
     scheduledTime: '6:30 PM',

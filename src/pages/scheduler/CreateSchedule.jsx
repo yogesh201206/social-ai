@@ -48,7 +48,8 @@ function SuccessModal({ data, onClose, onViewAll, onScheduleAnother }) {
             { label: 'Branch', value: data.branchName },
             { label: 'Platforms', value: data.platforms?.join(', ') },
             { label: 'Date', value: data.scheduledDateDisplay },
-            { label: 'Time', value: data.scheduledTime },
+            { label: 'Time', value: `${data.scheduledTime || data.scheduledTimeInput}${data.timezone === 'Asia/Kolkata' ? ' IST' : data.timezone ? ` (${data.timezone})` : ''}` },
+            { label: 'Timezone', value: data.timezone },
           ].map(({ label, value }) => (
             <div key={label} className="flex justify-between text-sm">
               <span className="text-gray-500 dark:text-gray-400">{label}</span>
@@ -186,8 +187,20 @@ export default function CreateSchedule() {
       } else if (!form.scheduledTimeInput) {
         newErrors.scheduledTimeInput = 'Time is required'
       } else {
-        const scheduledDateTime = new Date(`${form.scheduledDate}T${form.scheduledTimeInput}:00`)
-        if (Number.isNaN(scheduledDateTime.getTime()) || scheduledDateTime <= new Date()) {
+        const tz = form.timezone || 'Asia/Kolkata'
+        const now = new Date()
+        let isPast = false
+        try {
+          const currentDate = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)
+          const currentTime = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(now)
+          const selected = `${form.scheduledDate}T${form.scheduledTimeInput}`
+          const current = `${currentDate}T${currentTime}`
+          isPast = selected <= current
+        } catch (e) {
+          const scheduledDateTime = new Date(`${form.scheduledDate}T${form.scheduledTimeInput}:00`)
+          isPast = Number.isNaN(scheduledDateTime.getTime()) || scheduledDateTime <= now
+        }
+        if (isPast) {
           newErrors.scheduledDate = 'Scheduled date and time must be in the future'
         }
       }
@@ -451,7 +464,13 @@ export default function CreateSchedule() {
               </label>
               <input
                 type="date"
-                min={new Date().toISOString().split('T')[0]}
+                min={(() => {
+                  try {
+                    return new Intl.DateTimeFormat('en-CA', { timeZone: form.timezone || 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+                  } catch (e) {
+                    return new Date().toISOString().split('T')[0]
+                  }
+                })()}
                 value={form.scheduledDate}
                 onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
                 className={inputClass('scheduledDate')}

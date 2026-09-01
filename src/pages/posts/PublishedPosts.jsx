@@ -67,35 +67,70 @@ export default function PublishedPosts() {
                   <span>Published {post.publishedAt}</span>
                 </div>
 
-                {post.metrics && (
+                {/* Platform-specific real metrics */}
+                {post.status === 'Published' && (
                   <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-gray-200/50 dark:border-gray-700/50">
-                    <div className="text-center">
-                      <div className="flex items-center justify-center gap-1 text-pink-500">
-                        <Heart className="h-3.5 w-3.5" />
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                          {post.metrics.likes.toLocaleString()}
-                        </span>
-                      </div>
-                      <span className="text-xs text-gray-400">Likes</span>
-                    </div>
-                    <div className="text-center">
-                      <div className="flex items-center justify-center gap-1 text-blue-500">
-                        <MessageCircle className="h-3.5 w-3.5" />
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                          {post.metrics.comments.toLocaleString()}
-                        </span>
-                      </div>
-                      <span className="text-xs text-gray-400">Comments</span>
-                    </div>
-                    <div className="text-center">
-                      <div className="flex items-center justify-center gap-1 text-green-500">
-                        <Share2 className="h-3.5 w-3.5" />
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                          {post.metrics.shares.toLocaleString()}
-                        </span>
-                      </div>
-                      <span className="text-xs text-gray-400">Shares</span>
-                    </div>
+                    {post.platform === 'YouTube' ? (
+                      <>
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1 text-purple-500">
+                            <Eye className="h-3.5 w-3.5" />
+                            <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                              {post.views != null ? post.views.toLocaleString() : '—'}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-gray-400">Views</span>
+                        </div>
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1 text-pink-500">
+                            <Heart className="h-3.5 w-3.5" />
+                            <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                              {post.likes != null ? post.likes.toLocaleString() : '—'}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-gray-400">Likes</span>
+                        </div>
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1 text-blue-500">
+                            <MessageCircle className="h-3.5 w-3.5" />
+                            <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                              {post.comments != null ? post.comments.toLocaleString() : '—'}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-gray-400">Comments</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1 text-pink-500">
+                            <Heart className="h-3.5 w-3.5" />
+                            <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                              {post.likes != null ? post.likes.toLocaleString() : '—'}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-gray-400">Likes</span>
+                        </div>
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1 text-blue-500">
+                            <MessageCircle className="h-3.5 w-3.5" />
+                            <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                              {post.comments != null ? post.comments.toLocaleString() : '—'}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-gray-400">{post.platform === 'Twitter' ? 'Replies' : 'Comments'}</span>
+                        </div>
+                        <div className="text-center">
+                          <div className="flex items-center justify-center gap-1 text-green-500">
+                            <Share2 className="h-3.5 w-3.5" />
+                            <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                              {post.shares != null ? post.shares.toLocaleString() : '—'}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-gray-400">{post.platform === 'Twitter' ? 'Reposts' : 'Shares'}</span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
 

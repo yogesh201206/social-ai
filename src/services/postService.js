@@ -63,6 +63,32 @@ export const postService = {
       method: 'POST',
     })
   },
+
+  /**
+   * Fetches real metrics from the connected social media platform.
+   */
+  refreshMetrics: async (id) => {
+    return await apiFetch(`/posts/${id}/metrics`, {
+      method: 'POST',
+    })
+  },
+
+  /**
+   * Uploads a media file (image or video) and returns its storage URL/path.
+   * @param {File} file
+   * @param {'temp' | 'scheduled'} purpose
+   * @param {string} platform
+   */
+  uploadMedia: async (file, purpose = 'temp', platform = 'general') => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('purpose', purpose)
+    formData.append('platform', platform)
+    return await apiFetch('/media/upload', {
+      method: 'POST',
+      body: formData,
+    })
+  },
 }
 
 export default postService

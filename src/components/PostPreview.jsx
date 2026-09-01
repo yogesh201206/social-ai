@@ -180,7 +180,7 @@ function YouTubePreview({ post }) {
 const previewComponents = {
   Instagram: InstagramPreview,
   Facebook: FacebookPreview,
-  'Twitter(X)': TwitterPreview,
+  Twitter: TwitterPreview,
   LinkedIn: LinkedInPreview,
   YouTube: YouTubePreview,
 }
@@ -202,7 +202,7 @@ export default function PostPreview({ post, platform }) {
 }
 
 export function PostPreviewGrid({ post }) {
-  const platforms = ['Instagram', 'Facebook', 'Twitter(X)', 'LinkedIn', 'YouTube']
+  const platforms = ['Instagram', 'Facebook', 'Twitter', 'LinkedIn', 'YouTube']
 
   return (
     <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-8">

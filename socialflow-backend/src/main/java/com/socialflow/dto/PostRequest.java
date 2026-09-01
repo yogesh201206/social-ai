@@ -20,6 +20,9 @@ public class PostRequest {
 
     private String caption;
     private String imageUrl;
+    private String mediaPath;
+    private String mediaType;
+    private String originalFileName;
     private String hashtags;
 
     @NotNull(message = "Platform is required")
@@ -33,4 +36,5 @@ public class PostRequest {
     private PostStatus status;
 
     private LocalDateTime scheduledAt;
+    private String timezone;
 }

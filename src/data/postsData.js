@@ -9,7 +9,7 @@ const foodImages = [
   'https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=600&h=400&fit=crop',
 ]
 
-export const platforms = ['Instagram', 'Facebook', 'Twitter(X)', 'LinkedIn', 'YouTube']
+export const platforms = ['Instagram', 'Facebook', 'Twitter', 'LinkedIn', 'YouTube']
 
 export const posts = [
   {
@@ -53,7 +53,7 @@ export const posts = [
     title: 'Weekend Brunch Promo',
     caption: 'Brunch goals unlocked! Avocado toast, fluffy pancakes, and bottomless mimosas every Saturday & Sunday. Tag someone who needs this in their life.',
     image: foodImages[2],
-    platform: 'Twitter(X)',
+    platform: 'Twitter',
     status: 'Draft',
     hashtags: ['#WeekendBrunch', '#BrunchGoals', '#GardenCafe'],
     cta: 'Book Brunch',
@@ -100,7 +100,7 @@ export const posts = [
     scheduledDate: 'Jun 14, 2026',
     scheduledTime: '11:00 AM',
     publishedAt: 'Jun 14, 2026',
-    metrics: { likes: 1247, comments: 89, shares: 156 },
+    metrics: null,
   },
   {
     id: '6',
@@ -118,14 +118,14 @@ export const posts = [
     scheduledDate: 'Jun 11, 2026',
     scheduledTime: '10:00 AM',
     publishedAt: 'Jun 11, 2026',
-    metrics: { likes: 892, comments: 67, shares: 203 },
+    metrics: null,
   },
   {
     id: '7',
     title: 'New Espresso Blend',
     caption: 'Introducing our single-origin Ethiopian espresso — notes of blueberry, jasmine, and dark chocolate. Available at all Garden Cafe locations.',
     image: foodImages[6],
-    platform: 'Twitter(X)',
+    platform: 'Twitter',
     status: 'Draft',
     hashtags: ['#CoffeeLovers', '#SingleOrigin', '#GardenCafe'],
     cta: 'Try Today',
@@ -154,7 +154,7 @@ export const posts = [
     scheduledDate: 'Jun 9, 2026',
     scheduledTime: '6:30 PM',
     publishedAt: 'Jun 9, 2026',
-    metrics: { likes: 2103, comments: 142, shares: 287 },
+    metrics: null,
   },
   {
     id: '9',
@@ -190,7 +190,7 @@ export const posts = [
     scheduledDate: 'Jun 7, 2026',
     scheduledTime: '7:00 PM',
     publishedAt: 'Jun 7, 2026',
-    metrics: { likes: 3456, comments: 234, shares: 412 },
+    metrics: null,
   },
   {
     id: '11',
@@ -226,7 +226,7 @@ export const posts = [
     scheduledDate: 'Jun 1, 2026',
     scheduledTime: '2:00 PM',
     publishedAt: 'Jun 1, 2026',
-    metrics: { likes: 248, comments: 34, shares: 67 },
+    metrics: null,
   },
   {
     id: '13',
@@ -262,7 +262,7 @@ export const posts = [
     scheduledDate: 'May 30, 2026',
     scheduledTime: '12:00 PM',
     publishedAt: 'May 30, 2026',
-    metrics: { likes: 678, comments: 45, shares: 89 },
+    metrics: null,
   },
   {
     id: '15',
@@ -316,14 +316,14 @@ export const posts = [
     scheduledDate: 'May 24, 2026',
     scheduledTime: '6:00 PM',
     publishedAt: 'May 24, 2026',
-    metrics: { likes: 456, comments: 32, shares: 67 },
+    metrics: null,
   },
   {
     id: '18',
     title: 'Grand Opening Announcement',
     caption: 'Taco Town is coming to Whitefield! Join us for our grand opening celebration with live mariachi, free tacos, and surprise giveaways.',
     image: foodImages[1],
-    platform: 'Twitter(X)',
+    platform: 'Twitter',
     status: 'Scheduled',
     hashtags: ['#GrandOpening', '#Whitefield', '#TacoTown'],
     cta: 'Get Directions',
@@ -388,7 +388,7 @@ export const posts = [
     scheduledDate: 'May 22, 2026',
     scheduledTime: '8:00 AM',
     publishedAt: 'May 22, 2026',
-    metrics: { likes: 534, comments: 28, shares: 76 },
+    metrics: null,
   },
   {
     id: '22',
@@ -424,14 +424,14 @@ export const posts = [
     scheduledDate: 'May 19, 2026',
     scheduledTime: '1:00 PM',
     publishedAt: 'May 19, 2026',
-    metrics: { likes: 1876, comments: 198, shares: 145 },
+    metrics: null,
   },
   {
     id: '24',
     title: 'Holiday Catering Menu',
     caption: 'Planning a party? Our holiday catering menu features party platters, dessert towers, and full buffet packages for groups of 20–200.',
     image: foodImages[7],
-    platform: 'Twitter(X)',
+    platform: 'Twitter',
     status: 'Draft',
     hashtags: ['#Catering', '#HolidayParty', '#EventPlanning'],
     cta: 'Get Quote',
@@ -449,7 +449,7 @@ export const posts = [
 export const platformCharLimits = {
   Instagram: 2200,
   Facebook: 63206,
-  'Twitter(X)': 280,
+  Twitter: 280,
   LinkedIn: 3000,
   YouTube: 5000,
 }
@@ -457,7 +457,7 @@ export const platformCharLimits = {
 export const platformIcons = {
   Instagram: 'Instagram',
   Facebook: 'Facebook',
-  'Twitter(X)': 'Twitter',
+  Twitter: 'Twitter',
   LinkedIn: 'Linkedin',
   YouTube: 'Youtube',
 }
@@ -465,7 +465,7 @@ export const platformIcons = {
 export const platformColors = {
   Instagram: 'from-pink-500 to-purple-600',
   Facebook: 'from-blue-600 to-blue-700',
-  'Twitter(X)': 'from-gray-800 to-gray-900',
+  Twitter: 'from-gray-800 to-gray-900',
   LinkedIn: 'from-blue-500 to-blue-700',
   YouTube: 'from-red-600 to-red-700',
 }
@@ -473,7 +473,7 @@ export const platformColors = {
 export const platformHashtagSuggestions = {
   Instagram: ['#Foodie', '#InstaFood', '#RestaurantLife', '#FoodPhotography', '#EatLocal', '#ChefSpecial'],
   Facebook: ['#LocalBusiness', '#FoodLovers', '#DiningOut', '#WeekendVibes', '#FamilyDining'],
-  'Twitter(X)': ['#FoodTwitter', '#FoodNews', '#Dining', '#LocalEats', '#FoodTrends'],
+  Twitter: ['#FoodTwitter', '#FoodNews', '#Dining', '#LocalEats', '#FoodTrends'],
   LinkedIn: ['#RestaurantBusiness', '#HospitalityIndustry', '#FoodService', '#CorporateCatering', '#BusinessDining'],
   YouTube: ['#FoodVlog', '#CookingTips', '#RestaurantReview', '#FoodCommunity', '#ChefLife'],
 }
@@ -491,7 +491,7 @@ export const captionTips = {
     'Share behind-the-scenes stories for authenticity',
     'Include event dates and links when promoting specials',
   ],
-  'Twitter(X)': [
+  Twitter: [
     'Stay under 280 characters for maximum impact',
     'Use 1–2 hashtags — less is more on X',
     'Add urgency with time-limited offers',

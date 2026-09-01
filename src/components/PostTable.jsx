@@ -44,21 +44,23 @@ export default function PostTable({ posts, showMetrics = false }) {
               <td className="py-3 text-gray-500 dark:text-gray-400 hidden sm:table-cell">{post.platform}</td>
               <td className="py-3 text-gray-500 dark:text-gray-400 hidden md:table-cell">{post.restaurantName}</td>
               <td className="py-3 text-gray-500 dark:text-gray-400">
-                {post.publishedAt || post.scheduledDate || post.createdAt}
+                {post.status?.toLowerCase() === 'scheduled'
+                  ? `${post.scheduledDate || ''} ${post.scheduledTime ? `at ${post.scheduledTime}` : ''}`.trim() || post.createdAt
+                  : (post.publishedAt || post.createdAt)}
               </td>
               <td className="py-3">
                 <StatusBadge status={post.status} />
               </td>
-              {showMetrics && post.metrics && (
+              {showMetrics && (
                 <>
                   <td className="py-3 text-gray-500 dark:text-gray-400 hidden lg:table-cell">
-                    {post.metrics.likes.toLocaleString()}
+                    {post.likes != null ? post.likes.toLocaleString() : (post.metrics?.likes != null ? post.metrics.likes.toLocaleString() : '—')}
                   </td>
                   <td className="py-3 text-gray-500 dark:text-gray-400 hidden lg:table-cell">
-                    {post.metrics.comments.toLocaleString()}
+                    {post.comments != null ? post.comments.toLocaleString() : (post.metrics?.comments != null ? post.metrics.comments.toLocaleString() : '—')}
                   </td>
                   <td className="py-3 text-gray-500 dark:text-gray-400 hidden xl:table-cell">
-                    {post.metrics.shares.toLocaleString()}
+                    {post.shares != null ? post.shares.toLocaleString() : (post.metrics?.shares != null ? post.metrics.shares.toLocaleString() : '—')}
                   </td>
                 </>
               )}

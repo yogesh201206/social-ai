@@ -60,7 +60,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                // OAuth callbacks are called by external providers without JWT
+                .requestMatchers("/api/media/files/**").permitAll()
                 .requestMatchers("/api/social-accounts/*/callback").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/**").authenticated()

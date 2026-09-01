@@ -1,77 +1,99 @@
-# Phase 9 – Backend Development & Database Integration Implementation Plan
+# Fix Scheduled Post Timing and Timezone Issue
 
-Build the Spring Boot backend and MySQL database for **SocialFlow AI**, create clean layered REST APIs for all modules, and integrate the React frontend with these APIs while preserving mock fallback for seamless user experience.
+## Overview
+When a user schedules a social media post for a specific local time (e.g., `2026-09-02 00:05` in `Asia/Kolkata` IST), the post does not publish at the user's selected time because the local timestamp is saved directly as UTC in the database without timezone conversion. As a result, the scheduler comparing against UTC thinks the post is 5 hours and 30 minutes in the future.
 
-## User Review Required
-
-> [!IMPORTANT]
-> - **Backend Framework**: Java 17+, Spring Boot 3.x, Maven, Spring Data JPA, Spring Security (JWT authentication + BCrypt), Jakarta Validation, and MySQL Driver.
-> - **Database**: Schema `socialflow_ai`. Configuration driven by environment variables (`DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`). Includes H2 in-memory DB fallback so backend runs seamlessly even if local MySQL server is not active.
-> - **Frontend Integration**: Modular API clients in `src/services/` (`api.js`, `authService.js`, `restaurantService.js`, `postService.js`, `schedulerService.js`, `analyticsService.js`, `emailService.js`, `aiService.js`, `adminService.js`, `userService.js`) and updated Contexts supporting live backend data with fallback to mock datasets.
-
-## Proposed Changes
-
-### 1. Spring Boot Backend Project (`socialflow-backend/`)
-
-#### [NEW] [pom.xml](file:///c:/Users/yoges/Projects/social-ai/socialflow-backend/pom.xml)
-- Spring Boot 3.2.3 dependencies: `spring-boot-starter-web`, `spring-boot-starter-data-jpa`, `mysql-connector-j`, `h2`, `spring-boot-starter-validation`, `spring-boot-starter-security`, `jjwt-api`, `jjwt-impl`, `jjwt-jackson`, `lombok`.
-
-#### [NEW] [application.properties](file:///c:/Users/yoges/Projects/social-ai/socialflow-backend/src/main/resources/application.properties)
-- DB connection config (`DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`), Hibernate auto-ddl (`update`), SQL logging, CORS settings.
-
-#### [NEW] Entities (`src/main/java/com/socialflow/entity/`)
-- `User.java`: `id`, `name`, `email` (unique), `password`, `phone`, `businessName`, `businessType`, `plan`, `role` (`USER`, `ADMIN`), `status` (`ACTIVE`, `INACTIVE`, `SUSPENDED`), `createdAt`, `updatedAt`.
-- `Restaurant.java`: `id`, `name`, `category`, `businessType`, `description`, `phone`, `email`, `address`, `owner` (ManyToOne to User), `status`, `createdAt`, `updatedAt`.
-- `Branch.java`: `id`, `branchName`, `address`, `city`, `state`, `phone`, `restaurant` (ManyToOne to Restaurant), `status`, `createdAt`.
-- `Post.java`: `id`, `title`, `caption`, `imageUrl`, `hashtags`, `platform` (`INSTAGRAM`, `FACEBOOK`, `TWITTER`, `TIKTOK`, `YOUTUBE`), `restaurant`, `branch`, `status` (`DRAFT`, `SCHEDULED`, `PUBLISHED`, `CANCELLED`), `scheduledAt`, `publishedAt`, `createdAt`, `updatedAt`.
-- `ScheduledPost.java`: `id`, `post`, `restaurant`, `branch`, `platform`, `scheduledDateTime`, `timezone`, `status` (`SCHEDULED`, `PUBLISHED`, `CANCELLED`), `createdAt`, `updatedAt`.
-- `AIHistory.java`: `id`, `user`, `restaurant`, `contentType` (`Caption`, `Hashtags`, `CTA`, `Marketing Idea`, `Email Content`), `prompt`, `generatedContent`, `createdAt`.
-- `EmailCampaign.java`: `id`, `campaignName`, `restaurant`, `branch`, `audience`, `subject`, `previewText`, `content`, `ctaText`, `ctaLink`, `recipientCount`, `status` (`DRAFT`, `SCHEDULED`, `SENT`, `PAUSED`), `scheduledAt`, `sentAt`, `createdAt`, `updatedAt`.
-- `Analytics.java`: `id`, `restaurant`, `branch`, `platform`, `date`, `reach`, `impressions`, `likes`, `comments`, `shares`, `followers`, `engagementRate`.
-
-#### [NEW] Repositories (`src/main/java/com/socialflow/repository/`)
-- `UserRepository`, `RestaurantRepository`, `BranchRepository`, `PostRepository`, `ScheduledPostRepository`, `AIHistoryRepository`, `EmailCampaignRepository`, `AnalyticsRepository`.
-
-#### [NEW] DTOs & Exceptions (`src/main/java/com/socialflow/dto/`, `exception/`)
-- Request/Response DTOs for Auth, Users, Restaurants, Branches, Posts, Schedules, AI History, Email Campaigns, Analytics, Admin Dashboard.
-- Custom exceptions: `ResourceNotFoundException`, `BadRequestException`, `UnauthorizedException`.
-- `GlobalExceptionHandler`: Centralized JSON error format (`status`, `message`, `timestamp`, `details`).
-
-#### [NEW] Security & JWT (`src/main/java/com/socialflow/security/`, `config/`)
-- `JwtTokenProvider`, `JwtAuthenticationFilter`, `UserPrincipal`, `CustomUserDetailsService`.
-- `SecurityConfig`: Configures BCrypt, Stateless JWT filter, route authorization (`/api/auth/**` public, `/api/admin/**` requires `ROLE_ADMIN`).
-- `CorsConfig`: Permits frontend dev server (`http://localhost:5173`).
-
-#### [NEW] Services & Controllers (`src/main/java/com/socialflow/service/`, `controller/`)
-- Services & Controllers for Authentication, Users, Restaurants & Branches, Posts, AI History, Schedules, Email Campaigns, Analytics, and Admin Management.
-- `DataInitializer`: Seed data generator for initial startup.
+This plan addresses the root cause by implementing proper local-to-UTC conversion on scheduling, UTC comparison in `ScheduledPostPublisherJob`, and UTC-to-local conversion for frontend display, without hardcoding offsets or altering unrelated functionalities.
 
 ---
 
-### 2. Frontend Integration Layer (`src/services/` & `src/context/`)
+## Root Cause Analysis
+1. **Local Time Stored Directly Without Offset Conversion**:
+   The frontend was passing local date-time strings (e.g. `2026-09-02T00:05:00`), and backend entities (`ScheduledPost`, `Post`) saved this value directly as a `LocalDateTime` into MySQL without converting from `Asia/Kolkata` to UTC (`2026-09-01T18:35:00Z`).
+2. **Scheduler Comparison Mismatch**:
+   `ScheduledPostPublisherJob` queried `scheduledDateTime <= LocalDateTime.now()`. When the server/database uses UTC (`NOW() = 18:35:00 UTC`), `2026-09-02 00:05:00` in the database is evaluated as 5.5 hours in the future.
+3. **Frontend Display Slicing**:
+   The frontend parsed datetime strings via raw string slicing (`split('T')[0]`), which showed whatever raw string was returned without localized timezone formatting.
 
-#### [NEW] API Services (`src/services/`)
-- `api.js`: Base fetch client configured with `VITE_API_BASE_URL` and automatic JWT `Authorization` header insertion.
-- `authService.js`, `restaurantService.js`, `postService.js`, `schedulerService.js`, `aiService.js`, `emailService.js`, `analyticsService.js`, `adminService.js`, `userService.js`.
+---
 
-#### [NEW] [AuthContext.jsx](file:///c:/Users/yoges/Projects/social-ai/src/context/AuthContext.jsx)
-- Global context for managing current authenticated user state, JWT token, login, register, and logout.
+## Proposed Changes
 
-#### [MODIFY] Contexts (`src/context/`)
-- Update `RestaurantContext`, `PostContext`, `AIContext`, `SchedulerContext`, `AnalyticsContext`, `EmailMarketingContext`, `AdminContext` to call API services while falling back to mock data if API request is pending or backend is offline.
+### Backend (`socialflow-backend`)
 
-#### [NEW] [.env](file:///c:/Users/yoges/Projects/social-ai/.env) & [.env.example](file:///c:/Users/yoges/Projects/social-ai/.env.example)
-- `VITE_API_BASE_URL=http://localhost:8080/api`
+#### [MODIFY] [Post.java](file:///c:/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/entity/Post.java)
+- Add `private String timezone;` so that posts created/scheduled preserve their associated timezone.
+
+#### [MODIFY] [PostRequest.java](file:///c:/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/dto/PostRequest.java) & [PostResponse.java](file:///c:/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/dto/PostResponse.java)
+- Add `private String timezone;` to both request and response DTOs.
+
+#### [MODIFY] [ScheduledPostServiceImpl.java](file:///c:/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/service/impl/ScheduledPostServiceImpl.java)
+- In `createSchedule` and `updateSchedule`:
+  - Read `request.getScheduledDateTime()` and `request.getTimezone()` (defaulting to `"Asia/Kolkata"`).
+  - Convert `LocalDateTime` in the user's `ZoneId` to UTC `LocalDateTime`:
+    ```java
+    ZoneId userZone = ZoneId.of(tzStr);
+    ZonedDateTime userZoned = request.getScheduledDateTime().atZone(userZone);
+    LocalDateTime utcDateTime = userZoned.withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime();
+    ```
+  - Validate future time in UTC: `utcDateTime.isBefore(LocalDateTime.now(ZoneOffset.UTC).minusMinutes(1))`.
+  - Persist `utcDateTime` and `timezone` to `ScheduledPost` and `Post`.
+
+#### [MODIFY] [PostServiceImpl.java](file:///c:/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/service/impl/PostServiceImpl.java) & [PostService.java](file:///c:/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/service/PostService.java) & [PostController.java](file:///c:/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/controller/PostController.java)
+- In `createPost`, `updatePost`, and `schedulePost`:
+  - Convert incoming local `scheduledAt` using the provided `timezone` to UTC `LocalDateTime`.
+  - Validate future timestamp against `LocalDateTime.now(ZoneOffset.UTC)`.
+  - Save UTC timestamp in `post.setScheduledAt(utcDateTime)` and `scheduledPost.setScheduledDateTime(utcDateTime)`.
+  - In `publishPost`: use `LocalDateTime.now(ZoneOffset.UTC)` for `publishedAt`.
+
+#### [MODIFY] [ScheduledPostPublisherJob.java](file:///c:/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/service/ScheduledPostPublisherJob.java)
+- In `publishDuePosts()`:
+  - Query due posts using `LocalDateTime.now(ZoneOffset.UTC)`:
+    ```java
+    LocalDateTime nowUtc = LocalDateTime.now(ZoneOffset.UTC);
+    List<ScheduledPost> duePosts = scheduledPostRepository
+            .findByStatusAndScheduledDateTimeBefore(ScheduleStatus.SCHEDULED, nowUtc);
+    ```
+  - In `processScheduledPost()`:
+    - On success: set `post.setPublishedAt(LocalDateTime.now(ZoneOffset.UTC))`, status `PUBLISHED` on both `Post` and `ScheduledPost`.
+    - On failure: mark status `FAILED` on both `Post` and `ScheduledPost`.
+
+---
+
+### Frontend (`src/`)
+
+#### [MODIFY] [SchedulerContext.jsx](file:///c:/Users/yoges/Projects/social-ai/src/context/SchedulerContext.jsx)
+- Implement timezone conversion utilities using `Intl.DateTimeFormat`:
+  - Parse UTC strings properly (`dateStr + 'Z'`).
+  - `formatDisplayDate(dateStr, timezone)`: Formats in user timezone (e.g. `September 2, 2026`).
+  - `formatDisplayTime(dateStr, timezone)`: Formats in user timezone (e.g. `12:05 AM`).
+  - `parseDatePartInTimezone(dateStr, timezone)`: Returns `YYYY-MM-DD` in target timezone for inputs.
+  - `parseTimeInputInTimezone(dateStr, timezone)`: Returns `HH:mm` in target timezone for inputs.
+- Send `scheduledDateTime` (local datetime format `YYYY-MM-DDTHH:mm:ss`) and `timezone` to the backend.
+
+#### [MODIFY] [PostContext.jsx](file:///c:/Users/yoges/Projects/social-ai/src/context/PostContext.jsx)
+- Update `mapPostFromBackend` to format `scheduledDate` and `scheduledTime` in the post's timezone.
+- Pass `timezone` when creating, updating, and scheduling posts.
+
+#### [MODIFY] [CreateSchedule.jsx](file:///c:/Users/yoges/Projects/social-ai/src/pages/scheduler/CreateSchedule.jsx) & [CreatePost.jsx](file:///c:/Users/yoges/Projects/social-ai/src/pages/posts/CreatePost.jsx)
+- Ensure timezone field is sent in request payloads (`timezone: form.timezone || 'Asia/Kolkata'`).
+- Validate that selected date and time in the selected timezone is in the future before submitting.
+
+#### [MODIFY] [ScheduledPostDetails.jsx](file:///c:/Users/yoges/Projects/social-ai/src/pages/scheduler/ScheduledPostDetails.jsx) & [ScheduleCalendar.jsx](file:///c:/Users/yoges/Projects/social-ai/src/pages/scheduler/ScheduleCalendar.jsx)
+- Verify timezone-aware date and time rendering so scheduled posts display the user's selected time (e.g., `02 Sep 2026, 12:05 AM IST`).
 
 ---
 
 ## Verification Plan
 
-### Automated / Build Verification
-- Verify clean compilation of Spring Boot Java sources.
-- Verify React build passes via Vite build check.
+### Timezone Conversion Verification
+- Sample test case:
+  - Input Local: `2026-09-02 00:05:00`
+  - Input Timezone: `Asia/Kolkata` (UTC+05:30)
+  - Backend UTC Conversion: `2026-09-01 18:35:00 UTC`
+  - ScheduledPostPublisherJob comparison: At `2026-09-01 18:35:00 UTC` (which is `2026-09-02 00:05:00 IST`), `nowUtc >= scheduledDateTime` becomes `true` and the post publishes immediately on time.
+  - Frontend Display: `02 Sep 2026, 12:05 AM IST`.
 
-### Manual Verification
-- Verify endpoints structure and payload definitions.
-- Verify JWT Authentication flow (Login/Register -> Bearer Token -> Secured Endpoints).
-- Verify mock data fallback in frontend context hooks.
+### Static Code Validation
+- Review all modified backend Java files for type safety, null safety, and clean exception handling.
+- Review all modified frontend JSX files for clean state management, timezone formatting, and validation.

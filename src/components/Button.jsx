@@ -9,6 +9,8 @@ const variants = {
     'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:scale-[1.02] active:scale-[0.98]',
   danger:
     'bg-red-600 text-white hover:bg-red-700 hover:scale-[1.02] active:scale-[0.98]',
+  success:
+    'bg-green-600 text-white shadow-lg shadow-green-500/25 hover:bg-green-700 hover:shadow-green-500/40 hover:scale-[1.02] active:scale-[0.98]',
 }
 
 const sizes = {

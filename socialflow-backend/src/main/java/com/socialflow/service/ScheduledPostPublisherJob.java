@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
@@ -36,12 +37,14 @@ public class ScheduledPostPublisherJob {
     private final PostRepository postRepository;
     private final SocialAccountRepository socialAccountRepository;
     private final SocialMediaPublisherFactory publisherFactory;
+    private final MediaStorageService mediaStorageService;
 
     @Scheduled(fixedDelay = 60_000) // Run every 60 seconds
+    @Transactional
     public void publishDuePosts() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime nowUtc = LocalDateTime.now(ZoneOffset.UTC);
         List<ScheduledPost> duePosts = scheduledPostRepository
-                .findByStatusAndScheduledDateTimeBefore(ScheduleStatus.SCHEDULED, now);
+                .findByStatusAndScheduledDateTimeBefore(ScheduleStatus.SCHEDULED, nowUtc);
 
         if (duePosts.isEmpty()) return;
 
@@ -52,30 +55,23 @@ public class ScheduledPostPublisherJob {
         }
     }
 
-    @Transactional
     protected void processScheduledPost(ScheduledPost scheduledPost) {
-        // Re-fetch with fresh transaction to detect concurrent modification
-        Optional<ScheduledPost> freshOpt = scheduledPostRepository.findById(scheduledPost.getId());
-        if (freshOpt.isEmpty()) return;
-
-        ScheduledPost fresh = freshOpt.get();
-
         // Double-publish guard: skip if already processed by another thread
-        if (fresh.getStatus() != ScheduleStatus.SCHEDULED) {
+        if (scheduledPost.getStatus() != ScheduleStatus.SCHEDULED) {
             log.debug("[Scheduler] Skipping scheduled post id={} — status is already {}",
-                    fresh.getId(), fresh.getStatus());
+                    scheduledPost.getId(), scheduledPost.getStatus());
             return;
         }
 
         // 1. Transition to PROCESSING (prevents duplicate publish)
-        fresh.setStatus(ScheduleStatus.PROCESSING);
-        scheduledPostRepository.save(fresh);
+        scheduledPost.setStatus(ScheduleStatus.PROCESSING);
+        scheduledPostRepository.save(scheduledPost);
 
-        Post post = fresh.getPost();
+        Post post = scheduledPost.getPost();
         if (post == null) {
-            log.warn("[Scheduler] ScheduledPost id={} has no associated Post — marking FAILED", fresh.getId());
-            fresh.setStatus(ScheduleStatus.FAILED);
-            scheduledPostRepository.save(fresh);
+            log.warn("[Scheduler] ScheduledPost id={} has no associated Post — marking FAILED", scheduledPost.getId());
+            scheduledPost.setStatus(ScheduleStatus.FAILED);
+            scheduledPostRepository.save(scheduledPost);
             return;
         }
 
@@ -83,23 +79,23 @@ public class ScheduledPostPublisherJob {
         post.setStatus(PostStatus.PROCESSING);
         postRepository.save(post);
 
-        Platform platform = fresh.getPlatform() != null ? fresh.getPlatform() : post.getPlatform();
+        Platform platform = scheduledPost.getPlatform() != null ? scheduledPost.getPlatform() : post.getPlatform();
 
         if (platform == null) {
             String error = "No platform set on scheduled post";
             log.warn("[Scheduler] Post id={}: {}", post.getId(), error);
-            markFailed(fresh, post, error);
+            markFailed(scheduledPost, post, error);
             return;
         }
 
         // 2. Find connected social account
         Optional<SocialAccount> accountOpt = socialAccountRepository
-                .findByRestaurantIdAndPlatform(fresh.getRestaurant().getId(), platform);
+                .findByRestaurantIdAndPlatform(scheduledPost.getRestaurant().getId(), platform);
 
         if (accountOpt.isEmpty()) {
             String error = "No connected " + platform.name() + " account found. Please connect your account.";
             log.warn("[Scheduler] Post id={}: {}", post.getId(), error);
-            markFailed(fresh, post, error);
+            markFailed(scheduledPost, post, error);
             return;
         }
 
@@ -108,7 +104,7 @@ public class ScheduledPostPublisherJob {
         if (!Boolean.TRUE.equals(account.getIsConnected()) || !account.isTokenValid()) {
             String error = platform.name() + " access token is expired or disconnected. Please reconnect.";
             log.warn("[Scheduler] Post id={}: {}", post.getId(), error);
-            markFailed(fresh, post, error);
+            markFailed(scheduledPost, post, error);
             return;
         }
 
@@ -120,23 +116,30 @@ public class ScheduledPostPublisherJob {
             if (result.success()) {
                 // 4a. Success → PUBLISHED
                 post.setStatus(PostStatus.PUBLISHED);
-                post.setPublishedAt(LocalDateTime.now());
+                post.setPublishedAt(LocalDateTime.now(ZoneOffset.UTC));
                 post.setPlatformPostId(result.platformPostId());
                 post.setFailureReason(null);
+
+                // Clean up scheduled local media file after successful publish
+                if (post.getMediaPath() != null && !post.getMediaPath().isBlank()) {
+                    mediaStorageService.deleteMediaFile(post.getMediaPath());
+                    post.setMediaPath(null);
+                }
+
                 postRepository.save(post);
 
-                fresh.setStatus(ScheduleStatus.PUBLISHED);
-                scheduledPostRepository.save(fresh);
+                scheduledPost.setStatus(ScheduleStatus.PUBLISHED);
+                scheduledPostRepository.save(scheduledPost);
 
                 log.info("[Scheduler] Post id={} published to {} — platformPostId={}",
                         post.getId(), platform, result.platformPostId());
             } else {
                 // 4b. Failure → FAILED
-                markFailed(fresh, post, result.errorMessage());
+                markFailed(scheduledPost, post, result.errorMessage());
             }
         } catch (Exception e) {
             log.error("[Scheduler] Unexpected error publishing post id={}: {}", post.getId(), e.getMessage());
-            markFailed(fresh, post, "Unexpected error: " + e.getMessage());
+            markFailed(scheduledPost, post, "Unexpected error: " + e.getMessage());
         }
     }
 

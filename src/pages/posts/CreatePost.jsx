@@ -12,12 +12,12 @@ import { schedulerTimezones } from '../../data/schedulerData'
 import { userProfile } from '../../data/dashboardData'
 
 // Platforms not yet live — show Coming Soon instead of publishing
-const COMING_SOON_PLATFORMS = ['Instagram', 'Facebook']
+const COMING_SOON_PLATFORMS = ['Instagram']
 
 const defaultForm = {
   title: '',
   caption: '',
-  platform: 'Twitter',
+  platform: 'Facebook',
   hashtags: '',
   cta: '',
   restaurantId: '',
@@ -199,8 +199,8 @@ export default function CreatePost() {
     if (charCount > charLimit) newErrors.caption = `Caption exceeds ${charLimit.toLocaleString()} character limit`
     if (!form.platform) {
       newErrors.platform = 'Please select a platform'
-    } else if (['Instagram', 'Facebook'].includes(form.platform)) {
-      newErrors.platform = `${form.platform} integration is coming soon. Please select an active platform (X, LinkedIn, or YouTube).`
+    } else if (COMING_SOON_PLATFORMS.includes(form.platform)) {
+      newErrors.platform = `${form.platform} integration is coming soon. Please select Facebook, LinkedIn, or YouTube.`
     } else if (form.platform === 'YouTube' && !video?.preview && !video?.mediaUrl) {
       newErrors.video = 'YouTube publishing requires a video.'
     }
@@ -330,7 +330,7 @@ export default function CreatePost() {
     if (COMING_SOON_PLATFORMS.includes(form.platform)) {
       setPublishResult({
         status: 'error',
-        message: `${form.platform} publishing is coming soon. Please select X (Twitter), LinkedIn, or YouTube.`,
+        message: `${form.platform} publishing is coming soon. Please select Facebook, LinkedIn, or YouTube.`,
       })
       return
     }
@@ -727,7 +727,7 @@ export default function CreatePost() {
             {COMING_SOON_PLATFORMS.includes(form.platform) && (
               <div className="flex items-start gap-2.5 p-3 rounded-xl text-sm bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
                 <Clock className="h-4 w-4 flex-shrink-0 mt-0.5" />
-                <span>{form.platform} publishing is <strong>coming soon</strong>. Use X (Twitter), LinkedIn, or YouTube to publish now.</span>
+                <span>{form.platform} publishing is <strong>coming soon</strong>. Use Facebook, LinkedIn, or YouTube to publish now.</span>
               </div>
             )}
 

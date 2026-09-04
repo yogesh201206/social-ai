@@ -15,7 +15,9 @@
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/service/impl/MediaStorageServiceImpl.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/service/AuthService.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/service/impl/AnalyticsServiceImpl.java
+/mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/dto/SocialAccountCallbackResult.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/dto/ScheduleRequest.java
+/mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/dto/SelectFacebookPageRequest.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/service/BranchService.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/dto/AiGenerateRequest.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/dto/AIHistoryResponse.java
@@ -41,6 +43,7 @@
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/config/SocialPlatformConfig.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/service/AnalyticsService.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/dto/AIHistoryRequest.java
+/mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/dto/FacebookPageCandidateDto.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/entity/ScheduleStatus.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/repository/PostRepository.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/dto/PostResponse.java

@@ -18,6 +18,23 @@ export const socialAccountService = {
   },
 
   /**
+   * Fetches candidate Facebook Pages for a pending selection session.
+   */
+  getFacebookPages: async (selectionToken) => {
+    return await apiFetch(`/social-accounts/FACEBOOK/pages?selectionToken=${encodeURIComponent(selectionToken)}`)
+  },
+
+  /**
+   * Finalizes connecting the selected Facebook Page.
+   */
+  selectFacebookPage: async (selectionToken, pageId) => {
+    return await apiFetch('/social-accounts/FACEBOOK/select-page', {
+      method: 'POST',
+      body: JSON.stringify({ selectionToken, pageId }),
+    })
+  },
+
+  /**
    * Disconnects a social account by ID.
    */
   disconnect: async (id) => {

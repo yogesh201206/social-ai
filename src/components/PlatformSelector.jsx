@@ -1,16 +1,15 @@
 import * as Icons from 'lucide-react'
 import { platforms, platformIcons, platformColors } from '../data/postsData'
 
-// Platforms that are Coming Soon (Meta Business verification required)
-const COMING_SOON_PLATFORMS = ['Instagram', 'Facebook']
+// Platforms that are Coming Soon (Meta Business verification required for Instagram)
+const COMING_SOON_PLATFORMS = ['Instagram']
 
 // UI display labels — value (key) stays as backend-compatible enum name
 const platformDisplayLabels = {
-  Instagram: 'Instagram',
   Facebook: 'Facebook',
-  Twitter: 'X (Twitter)',
   LinkedIn: 'LinkedIn',
   YouTube: 'YouTube',
+  Instagram: 'Instagram',
 }
 
 export default function PlatformSelector({ value, onChange, multiple = false, connectedPlatforms = [] }) {
@@ -36,13 +35,12 @@ export default function PlatformSelector({ value, onChange, multiple = false, co
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       {platforms.map((platform) => {
         const Icon = Icons[platformIcons[platform]] || Icons.Globe
         const gradient = platformColors[platform]
         const active = isSelected(platform)
         const isComingSoon = COMING_SOON_PLATFORMS.includes(platform)
-        const isConnected = connectedPlatforms.includes(platform)
 
         if (isComingSoon) {
           return (

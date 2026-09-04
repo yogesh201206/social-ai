@@ -35,8 +35,8 @@ public class SocialPlatformConfig {
     }
 
     /**
-     * Meta (Instagram + Facebook) — Coming Soon.
-     * Architecture ready for when Meta Business verification is complete.
+     * Meta (Facebook ACTIVE, Instagram NEXT).
+     * Set META_APP_ID, META_APP_SECRET, and META_REDIRECT_URI environment variables.
      */
     @Configuration
     @ConfigurationProperties(prefix = "meta")

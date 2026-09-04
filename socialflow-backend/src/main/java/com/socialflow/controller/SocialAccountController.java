@@ -1,7 +1,11 @@
 package com.socialflow.controller;
 
+import com.socialflow.dto.FacebookPageCandidateDto;
+import com.socialflow.dto.SelectFacebookPageRequest;
+import com.socialflow.dto.SocialAccountCallbackResult;
 import com.socialflow.dto.SocialAccountResponse;
 import com.socialflow.service.SocialAccountService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
@@ -51,8 +55,7 @@ public class SocialAccountController {
     /**
      * GET /api/social-accounts/{platform}/callback?code=...&state=...
      * OAuth callback handler. Exchanges authorization code for tokens and saves them.
-     * When accessed via browser redirect, redirects user back to frontend settings.
-     * When accessed via API with Accept: application/json, returns JSON response.
+     * If Facebook user manages multiple Pages, redirects to page selection flow.
      */
     @GetMapping("/{platform}/callback")
     public ResponseEntity<?> handleCallback(
@@ -74,17 +77,47 @@ public class SocialAccountController {
                     .build();
         }
 
-        SocialAccountResponse response = socialAccountService.handleCallback(platform, code, state);
+        SocialAccountCallbackResult result = socialAccountService.handleCallbackWithResult(platform, code, state);
+
+        if (result.isRequiresPageSelection()) {
+            if (acceptHeader != null && acceptHeader.contains(MediaType_APPLICATION_JSON)) {
+                return ResponseEntity.ok(result);
+            }
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(URI.create("http://localhost:5173/dashboard/settings?select_page=" + platform + "&selection_token=" + result.getSelectionToken()))
+                    .build();
+        }
 
         // If caller requested JSON (e.g. automated tests or API client)
         if (acceptHeader != null && acceptHeader.contains(MediaType_APPLICATION_JSON)) {
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok(result.getAccount());
         }
 
         // Standard browser flow: redirect back to SocialFlow settings
         return ResponseEntity.status(HttpStatus.FOUND)
                 .location(URI.create("http://localhost:5173/dashboard/settings?connected=" + platform))
                 .build();
+    }
+
+    /**
+     * GET /api/social-accounts/FACEBOOK/pages?selectionToken=...
+     * Returns candidate Facebook Pages for selection (no access tokens).
+     */
+    @GetMapping("/FACEBOOK/pages")
+    public ResponseEntity<List<FacebookPageCandidateDto>> getFacebookPages(@RequestParam String selectionToken) {
+        return ResponseEntity.ok(socialAccountService.getFacebookCandidatePages(selectionToken));
+    }
+
+    /**
+     * POST /api/social-accounts/FACEBOOK/select-page
+     * Connects the selected Facebook Page for the authenticated user's restaurant.
+     */
+    @PostMapping("/FACEBOOK/select-page")
+    public ResponseEntity<SocialAccountResponse> selectFacebookPage(
+            @Valid @RequestBody SelectFacebookPageRequest request,
+            Authentication authentication) {
+        String email = authentication != null ? authentication.getName() : "";
+        return ResponseEntity.ok(socialAccountService.selectFacebookPage(request, email));
     }
 
     private static final String MediaType_APPLICATION_JSON = "application/json";

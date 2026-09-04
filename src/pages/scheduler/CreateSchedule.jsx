@@ -174,8 +174,8 @@ export default function CreateSchedule() {
     if (!form.branchId) newErrors.branchId = 'Please select a branch'
     if (form.platforms.length === 0) {
       newErrors.platforms = 'Select at least one platform'
-    } else if (form.platforms.some((p) => ['Instagram', 'Facebook'].includes(p))) {
-      newErrors.platforms = 'Instagram and Facebook scheduling is coming soon. Please select active platforms (X, LinkedIn, or YouTube).'
+    } else if (form.platforms.some((p) => ['Instagram'].includes(p))) {
+      newErrors.platforms = 'Instagram scheduling is coming soon. Please select Facebook, LinkedIn, or YouTube.'
     }
     if (form.platforms.includes('YouTube') && !image?.preview && !image?.url) {
       newErrors.image = 'YouTube publishing requires a video or media file.'

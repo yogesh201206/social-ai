@@ -107,7 +107,34 @@ ScheduledPostPublisherJob: scheduledDateTime <= LocalDateTime.now(ZoneOffset.UTC
                   ↓
 At 12:05:00 AM IST (18:35:00 UTC): Job matches due post, transitions SCHEDULED -> PROCESSING -> PUBLISHED
                   ↓
-Frontend fetches post and uses Intl.DateTimeFormat with post timezone:
-Displays: "02 Sep 2026, 12:05 AM IST"
-```
+---
+
+# Real Facebook Page Integration Walkthrough
+
+## Summary of Changes & Architecture
+
+Real Facebook Page integration has been implemented across the backend and frontend of SocialFlow AI using the Meta Graph API (v19.0).
+
+### 1. Facebook Page OAuth 2.0 Flow & Security
+- **Endpoints**:
+  - `GET /api/social-accounts/FACEBOOK/connect?restaurantId={restaurantId}`: Generates cryptographically secure CSRF state token linked to the authenticated user and restaurant, requesting scopes `pages_show_list,pages_manage_posts,pages_read_engagement,read_insights,public_profile`.
+  - `GET /api/social-accounts/FACEBOOK/callback?code=...&state=...`: Validates CSRF state, exchanges authorization code for Meta User Access Token, and queries `GET /me/accounts` to retrieve all Facebook Pages managed by the user and their Page Access Tokens.
+  - `GET /api/social-accounts/FACEBOOK/pages?selectionToken={token}`: Returns candidate Facebook Pages (names, IDs, categories — never tokens) for multi-page selection.
+  - `POST /api/social-accounts/FACEBOOK/select-page`: Securely finalizes connecting the chosen Facebook Page.
+
+### 2. Multi-Page Support
+- **Single Page**: Auto-connects the Page immediately and redirects back to Settings (`?connected=FACEBOOK`).
+- **Multiple Pages**: Returns `selectionToken` with 10-minute TTL, opens the **Facebook Page Selection Modal** in Settings, allowing the user to choose which Page to connect to the restaurant.
+
+### 3. Real Meta Graph API Publishing (`FacebookPublisher.java`)
+- **Text Post**: Publishes to `POST https://graph.facebook.com/v19.0/{page-id}/feed` with `message` and `access_token`.
+- **Photo Post**: Uploads multipart image binary or URL to `POST https://graph.facebook.com/v19.0/{page-id}/photos` with `caption` and `access_token`. Cleans up temporary files upon success.
+- **Scheduling**: Fully integrated with SocialFlow scheduler and UTC conversion in `ScheduledPostPublisherJob`.
+- **Delete Everywhere**: Calls `DELETE https://graph.facebook.com/v19.0/{platformPostId}?access_token={page_access_token}` and removes local record only after external confirmation.
+- **Real Performance Metrics**: Fetches real `reactions`, `comments`, `shares`, and `insights` (impressions/reach) via `GET /{platformPostId}`. Zero fake or fabricated metrics.
+
+### 4. Platform Status & Alignment
+- **ACTIVE**: `FACEBOOK`, `LINKEDIN`, `YOUTUBE`
+- **ADD NEXT**: `INSTAGRAM` (Meta architecture preserved and ready)
+- **REMOVED**: `TWITTER/X`, `TIKTOK`, `PINTEREST` (removed from selectable UI)
 

@@ -4,16 +4,17 @@ package com.socialflow.entity;
  * Supported social media platforms in SocialFlow.
  *
  * ACTIVE / REAL INTEGRATION:
- *   TWITTER  — X (Twitter) OAuth 2.0 + API v2
- *   YOUTUBE  — Google OAuth 2.0 + YouTube Data API v3
+ *   FACEBOOK — Meta Graph API (Pages, feed & photo publishing, insights)
  *   LINKEDIN — LinkedIn OAuth 2.0 + LinkedIn Share API
+ *   YOUTUBE  — Google OAuth 2.0 + YouTube Data API v3
  *
- * COMING SOON (architecture ready, publishing disabled):
- *   INSTAGRAM — Meta Graph API (requires Meta Business verification)
- *   FACEBOOK  — Meta Graph API (requires Meta Business verification)
+ * ADD NEXT:
+ *   INSTAGRAM — Meta Graph API (Instagram Content Publishing API)
  *
  * REMOVED:
- *   TIKTOK — no longer supported
+ *   TWITTER  — no longer supported in UI
+ *   TIKTOK   — no longer supported
+ *   PINTEREST — no longer supported
  */
 public enum Platform {
     INSTAGRAM,

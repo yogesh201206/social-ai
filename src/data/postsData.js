@@ -9,7 +9,7 @@ const foodImages = [
   'https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=600&h=400&fit=crop',
 ]
 
-export const platforms = ['Instagram', 'Facebook', 'Twitter', 'LinkedIn', 'YouTube']
+export const platforms = ['Facebook', 'LinkedIn', 'YouTube', 'Instagram']
 
 export const posts = [
   {

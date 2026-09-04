@@ -1,6 +1,9 @@
 package com.socialflow.service.impl;
 
 import com.socialflow.config.SocialPlatformConfig;
+import com.socialflow.dto.FacebookPageCandidateDto;
+import com.socialflow.dto.SelectFacebookPageRequest;
+import com.socialflow.dto.SocialAccountCallbackResult;
 import com.socialflow.dto.SocialAccountResponse;
 import com.socialflow.entity.*;
 import com.socialflow.exception.BadRequestException;
@@ -12,7 +15,10 @@ import com.socialflow.repository.UserRepository;
 import com.socialflow.service.SocialAccountService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
@@ -20,12 +26,14 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
@@ -42,6 +50,12 @@ public class SocialAccountServiceImpl implements SocialAccountService {
     private final SocialPlatformConfig.GoogleConfig googleConfig;
     private final SocialPlatformConfig.LinkedInConfig linkedInConfig;
     private final RestClient restClient;
+    private final ObjectMapper objectMapper;
+
+    // Temporary storage for multi-page Facebook OAuth candidate selection (10 min TTL)
+    private record PendingCandidate(String id, String name, String category, String accessToken) {}
+    private record PendingSelection(Long restaurantId, String userEmail, LocalDateTime expiresAt, List<PendingCandidate> candidates) {}
+    private final Map<String, PendingSelection> pendingFacebookSelections = new ConcurrentHashMap<>();
 
     @Override
     public List<SocialAccountResponse> getAccountsForUser(String currentUserEmail) {
@@ -56,10 +70,10 @@ public class SocialAccountServiceImpl implements SocialAccountService {
     public Map<String, String> initiateConnect(String platformStr, Long restaurantId, String currentUserEmail) {
         Platform platform = parsePlatform(platformStr);
 
-        // Block Instagram / Facebook — Coming Soon
-        if (platform == Platform.INSTAGRAM || platform == Platform.FACEBOOK) {
+        // Block Instagram — Coming Soon (Next in line)
+        if (platform == Platform.INSTAGRAM) {
             throw new BadRequestException(
-                    platform.name() + " integration is coming soon. " +
+                    "Instagram integration is coming soon. " +
                     "Social account connection has not been enabled yet. " +
                     "Please check back after Meta Business verification is complete.");
         }
@@ -109,6 +123,16 @@ public class SocialAccountServiceImpl implements SocialAccountService {
     @Override
     @Transactional
     public SocialAccountResponse handleCallback(String platformStr, String code, String state) {
+        SocialAccountCallbackResult result = handleCallbackWithResult(platformStr, code, state);
+        if (result.isRequiresPageSelection()) {
+            throw new BadRequestException("Multiple Facebook Pages found. Please select a page using the selection token: " + result.getSelectionToken());
+        }
+        return result.getAccount();
+    }
+
+    @Override
+    @Transactional
+    public SocialAccountCallbackResult handleCallbackWithResult(String platformStr, String code, String state) {
         if (isBlank(state)) {
             throw new BadRequestException("Missing OAuth state parameter in callback");
         }
@@ -132,7 +156,12 @@ public class SocialAccountServiceImpl implements SocialAccountService {
             throw new BadRequestException("Platform mismatch in OAuth callback: expected " + account.getPlatform() + " but got " + platform);
         }
 
-        // 2. Exchange code for tokens (using stored PKCE verifier for X)
+        // Special handling for Facebook (supports single-page auto-connect and multi-page selection)
+        if (platform == Platform.FACEBOOK) {
+            return processFacebookCallback(account, code);
+        }
+
+        // 2. Standard token exchange for other platforms
         String pkceVerifier = account.getPkceCodeVerifier();
         TokenResult tokens = exchangeCodeForTokens(platform, code, account.getRestaurant().getId(), pkceVerifier);
 
@@ -148,6 +177,219 @@ public class SocialAccountServiceImpl implements SocialAccountService {
 
         SocialAccount saved = socialAccountRepository.save(account);
         log.info("[Social] Connected {} account for restaurant={}", platform, account.getRestaurant().getId());
+
+        return SocialAccountCallbackResult.connected(mapToResponse(saved));
+    }
+
+    /**
+     * Processes Meta OAuth callback for Facebook Pages.
+     * Exchanges code for User Access Token, retrieves managed Pages, and either:
+     * - Auto-connects if exactly 1 Page
+     * - Stores pending candidates if multiple Pages
+     */
+    @SuppressWarnings("unchecked")
+    private SocialAccountCallbackResult processFacebookCallback(SocialAccount account, String code) {
+        if (isBlank(metaConfig.getAppId()) || isBlank(metaConfig.getAppSecret())) {
+            throw new BadRequestException("CONFIGURATION REQUIRED: Meta credentials not configured.");
+        }
+
+        String redirectUri = metaConfig.getRedirectUri();
+        validateMetaRedirectUri(redirectUri);
+
+        log.info("[Social] Facebook OAuth redirect URI={}, isAbsolute={}", redirectUri, URI.create(redirectUri.trim()).isAbsolute());
+
+        try {
+            // Step 1: Exchange code for Meta User Access Token (retrieve as String and parse JSON to handle text/javascript Content-Type)
+            String responseBody = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .scheme("https")
+                            .host("graph.facebook.com")
+                            .path("/v19.0/oauth/access_token")
+                            .queryParam("client_id", metaConfig.getAppId())
+                            .queryParam("client_secret", metaConfig.getAppSecret())
+                            .queryParam("redirect_uri", redirectUri)
+                            .queryParam("code", code)
+                            .build())
+                    .retrieve()
+                    .body(String.class);
+
+            Map<String, Object> tokenResponse = parseMetaTokenResponse(responseBody);
+
+            if (tokenResponse == null || !tokenResponse.containsKey("access_token")) {
+                throw new BadRequestException("Failed to obtain Meta access token.");
+            }
+
+            String userAccessToken = (String) tokenResponse.get("access_token");
+            Integer expiresIn = tokenResponse.get("expires_in") instanceof Number n ? n.intValue() : null;
+            LocalDateTime expiresAt = expiresIn != null ? LocalDateTime.now().plusSeconds(expiresIn) : null;
+
+            // Step 2: Fetch Facebook Pages managed by user via /me/accounts
+            ResponseEntity<String> accountsResponseEntity = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .scheme("https")
+                            .host("graph.facebook.com")
+                            .path("/v19.0/me/accounts")
+                            .queryParam("fields", "id,name,access_token,category")
+                            .queryParam("access_token", userAccessToken)
+                            .build())
+                    .retrieve()
+                    .toEntity(String.class);
+
+            int httpStatus = accountsResponseEntity.getStatusCode().value();
+            String accountsJson = accountsResponseEntity.getBody();
+
+            Map<String, Object> accountsResponse = objectMapper.readValue(
+                    accountsJson,
+                    new TypeReference<Map<String, Object>>() {}
+            );
+
+            List<Map<String, Object>> data = accountsResponse != null ? (List<Map<String, Object>>) accountsResponse.get("data") : null;
+            int pageCount = data != null ? data.size() : 0;
+            log.info("[Social] Facebook /me/accounts response status: {}, total pages returned: {}", httpStatus, pageCount);
+
+            if (data != null) {
+                for (Map<String, Object> page : data) {
+                    log.info("[Social] Discovered Facebook Page - id: {}, name: {}, category: {}",
+                            page.get("id"), page.get("name"), page.get("category"));
+                }
+            }
+
+            if (data == null || data.isEmpty()) {
+                throw new BadRequestException("No Facebook Pages found for this account. Ensure the logged-in Meta user has Facebook access/full control to at least one Page and that pages_show_list permission was granted.");
+            }
+
+            List<PendingCandidate> candidates = new ArrayList<>();
+            for (Map<String, Object> page : data) {
+                String pageId = (String) page.get("id");
+                String pageName = (String) page.get("name");
+                String pageAccessToken = (String) page.get("access_token");
+                String category = (String) page.get("category");
+                if (pageId != null && pageAccessToken != null) {
+                    candidates.add(new PendingCandidate(pageId, pageName != null ? pageName : "Facebook Page", category != null ? category : "Page", pageAccessToken));
+                }
+            }
+
+            if (candidates.isEmpty()) {
+                throw new BadRequestException("No accessible Facebook Pages found with valid Page tokens.");
+            }
+
+            // Case A: Exactly ONE Page -> Auto-connect
+            if (candidates.size() == 1) {
+                PendingCandidate single = candidates.get(0);
+                account.setPlatformAccountId(single.id());
+                account.setAccountName(single.name());
+                account.setAccessToken(single.accessToken());
+                account.setRefreshToken(null);
+                account.setTokenExpiresAt(expiresAt);
+                account.setIsConnected(true);
+                account.setOauthState(null);
+                account.setPkceCodeVerifier(null);
+
+                SocialAccount saved = socialAccountRepository.save(account);
+                log.info("[Social] Auto-connected Facebook Page '{}' (id={}) for restaurant={}",
+                        single.name(), single.id(), account.getRestaurant().getId());
+                return SocialAccountCallbackResult.connected(mapToResponse(saved));
+            }
+
+            // Case B: MULTIPLE Pages -> Generate selectionToken & store candidates
+            String selectionToken = UUID.randomUUID().toString();
+            pendingFacebookSelections.put(selectionToken, new PendingSelection(
+                    account.getRestaurant().getId(),
+                    account.getUser().getEmail(),
+                    LocalDateTime.now().plusMinutes(10),
+                    candidates
+            ));
+
+            // Clean up oauth state on pending account
+            account.setOauthState(null);
+            socialAccountRepository.save(account);
+
+            log.info("[Social] Meta OAuth returned {} Facebook Pages for restaurant={}. Awaiting user selection (token={})",
+                    candidates.size(), account.getRestaurant().getId(), selectionToken);
+
+            List<FacebookPageCandidateDto> candidateDtos = candidates.stream()
+                    .map(c -> new FacebookPageCandidateDto(c.id(), c.name(), c.category()))
+                    .toList();
+
+            return SocialAccountCallbackResult.selectPage(selectionToken, candidateDtos);
+
+        } catch (HttpClientErrorException e) {
+            String body = e.getResponseBodyAsString();
+            log.warn("[Social] Meta token exchange error (HTTP {}): {}", e.getStatusCode().value(), body);
+            throw new BadRequestException("Meta OAuth error: " + body);
+        } catch (BadRequestException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("[Social] Unexpected error during Facebook OAuth callback: {}", e.getMessage());
+            throw new BadRequestException("Failed to exchange Meta authorization code: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public List<FacebookPageCandidateDto> getFacebookCandidatePages(String selectionToken) {
+        if (isBlank(selectionToken)) {
+            throw new BadRequestException("Selection token is required.");
+        }
+        PendingSelection pending = pendingFacebookSelections.get(selectionToken);
+        if (pending == null || pending.expiresAt().isBefore(LocalDateTime.now())) {
+            pendingFacebookSelections.remove(selectionToken);
+            throw new BadRequestException("Invalid or expired Facebook Page selection session. Please initiate connection again.");
+        }
+        return pending.candidates().stream()
+                .map(c -> new FacebookPageCandidateDto(c.id(), c.name(), c.category()))
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public SocialAccountResponse selectFacebookPage(SelectFacebookPageRequest request, String currentUserEmail) {
+        if (request == null || isBlank(request.getSelectionToken()) || isBlank(request.getPageId())) {
+            throw new BadRequestException("Selection token and Page ID are required.");
+        }
+
+        PendingSelection pending = pendingFacebookSelections.get(request.getSelectionToken());
+        if (pending == null || pending.expiresAt().isBefore(LocalDateTime.now())) {
+            pendingFacebookSelections.remove(request.getSelectionToken());
+            throw new BadRequestException("Invalid or expired Facebook Page selection session. Please initiate connection again.");
+        }
+
+        // Verify current user ownership
+        User user = userRepository.findByEmail(currentUserEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + currentUserEmail));
+        boolean isAdmin = user.getRole() == Role.ADMIN;
+        if (!isAdmin && !pending.userEmail().equalsIgnoreCase(currentUserEmail)) {
+            throw new UnauthorizedException("You are not authorized to complete this page selection.");
+        }
+
+        PendingCandidate selected = pending.candidates().stream()
+                .filter(c -> c.id().equals(request.getPageId()))
+                .findFirst()
+                .orElseThrow(() -> new BadRequestException("Selected Page ID was not found among authorized pages."));
+
+        Restaurant restaurant = restaurantRepository.findById(pending.restaurantId())
+                .orElseThrow(() -> new ResourceNotFoundException("Restaurant not found"));
+
+        SocialAccount account = socialAccountRepository
+                .findByRestaurantIdAndPlatform(pending.restaurantId(), Platform.FACEBOOK)
+                .orElse(SocialAccount.builder()
+                        .user(user)
+                        .restaurant(restaurant)
+                        .platform(Platform.FACEBOOK)
+                        .build());
+
+        account.setPlatformAccountId(selected.id());
+        account.setAccountName(selected.name());
+        account.setAccessToken(selected.accessToken());
+        account.setRefreshToken(null);
+        account.setIsConnected(true);
+        account.setOauthState(null);
+        account.setPkceCodeVerifier(null);
+
+        SocialAccount saved = socialAccountRepository.save(account);
+        pendingFacebookSelections.remove(request.getSelectionToken());
+
+        log.info("[Social] Selected Facebook Page '{}' (id={}) for restaurant={}",
+                selected.name(), selected.id(), pending.restaurantId());
 
         return mapToResponse(saved);
     }
@@ -190,17 +432,20 @@ public class SocialAccountServiceImpl implements SocialAccountService {
     private String buildMetaOAuthUrl(Platform platform, String state, Long restaurantId) {
         if (isBlank(metaConfig.getAppId()) || isBlank(metaConfig.getAppSecret())) {
             throw new BadRequestException(
-                    "CONFIGURATION REQUIRED: Meta (Instagram/Facebook) app credentials are not configured. " +
+                    "CONFIGURATION REQUIRED: Meta (Facebook/Instagram) app credentials are not configured. " +
                     "Please set META_APP_ID and META_APP_SECRET environment variables. " +
                     "Register your app at https://developers.facebook.com/");
         }
         String scopes = platform == Platform.INSTAGRAM
                 ? "instagram_basic,instagram_content_publish,pages_read_engagement"
-                : "pages_manage_posts,pages_read_engagement";
+                : "pages_show_list,pages_manage_posts,pages_read_engagement,read_insights,public_profile";
+
+        String redirectUri = metaConfig.getRedirectUri();
+        validateMetaRedirectUri(redirectUri);
 
         return "https://www.facebook.com/v19.0/dialog/oauth" +
                "?client_id=" + metaConfig.getAppId() +
-               "&redirect_uri=" + encode(metaConfig.getRedirectUri()) +
+               "&redirect_uri=" + encode(redirectUri) +
                "&scope=" + encode(scopes) +
                "&state=" + encode(state + ":" + restaurantId) +
                "&response_type=code";
@@ -208,7 +453,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
 
     /**
      * Builds X (Twitter) OAuth 2.0 PKCE Authorization URL with S256 challenge.
-     * Required scopes: tweet.read, tweet.write, users.read, offline.access
      */
     private String buildXOAuthUrl(String state, String codeVerifier) {
         if (isBlank(xConfig.getClientId())) {
@@ -226,25 +470,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
         String encodedRedirectUri = encode(xConfig.getRedirectUri());
         String encodedClientId = encode(xConfig.getClientId());
         String encodedState = encode(state);
-
-        // TEMPORARY Sanitized Debug Logging (zero secrets logged)
-        log.info("[X-OAUTH] endpoint={}", endpoint);
-        log.info("[X-OAUTH] redirectUri={}", xConfig.getRedirectUri());
-        log.info("[X-OAUTH] scopes={}", scopes);
-        log.info("[X-OAUTH] pkce=S256");
-        log.info("[X-OAUTH] challengeLength={}", codeChallenge.length());
-        log.info("[X-OAUTH] clientIdLength={}", xConfig.getClientId().length());
-        log.info("[X-OAUTH] statePresent={}", !isBlank(state));
-
-        String sanitizedUrl = endpoint +
-               "?response_type=code" +
-               "&client_id=[REDACTED_LEN_" + xConfig.getClientId().length() + "]" +
-               "&redirect_uri=" + encodedRedirectUri +
-               "&scope=" + encodedScopes +
-               "&state=[REDACTED_STATE]" +
-               "&code_challenge=" + codeChallenge +
-               "&code_challenge_method=S256";
-        log.info("[X-OAUTH] sanitizedAuthUrl={}", sanitizedUrl);
 
         return endpoint +
                "?response_type=code" +
@@ -267,27 +492,11 @@ public class SocialAccountServiceImpl implements SocialAccountService {
         String endpoint = "https://accounts.google.com/o/oauth2/v2/auth";
         String scopes = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube";
         String redirectUri = googleConfig.getRedirectUri();
-        int clientIdLength = googleConfig.getClientId().length();
-
-        // Sanitized Debug Logging (zero secrets logged)
-        log.info("[YOUTUBE-OAUTH] endpoint={}", endpoint);
-        log.info("[YOUTUBE-OAUTH] redirectUri={}", redirectUri);
-        log.info("[YOUTUBE-OAUTH] scopes={}", scopes);
-        log.info("[YOUTUBE-OAUTH] clientIdLength={}", clientIdLength);
 
         String encodedScopes = encode(scopes);
         String encodedRedirectUri = encode(redirectUri);
         String encodedClientId = encode(googleConfig.getClientId());
         String encodedState = encode(state + ":" + restaurantId);
-
-        String sanitizedUrl = endpoint +
-                "?client_id=[REDACTED_LEN_" + clientIdLength + "]" +
-                "&redirect_uri=" + encodedRedirectUri +
-                "&response_type=code" +
-                "&scope=" + encodedScopes +
-                "&access_type=offline" +
-                "&state=[REDACTED_STATE]";
-        log.info("[YOUTUBE-OAUTH] sanitizedAuthUrl={}", sanitizedUrl);
 
         return endpoint +
                "?client_id=" + encodedClientId +
@@ -300,7 +509,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
 
     /**
      * Builds LinkedIn OAuth 2.0 authorization URL.
-     * Required scopes: openid, profile, w_member_social
      */
     private String buildLinkedInOAuthUrl(String state, Long restaurantId) {
         if (isBlank(linkedInConfig.getClientId()) || isBlank(linkedInConfig.getClientSecret())) {
@@ -314,26 +522,11 @@ public class SocialAccountServiceImpl implements SocialAccountService {
         String endpoint = "https://www.linkedin.com/oauth/v2/authorization";
         String scopes = "openid profile w_member_social";
         String redirectUri = linkedInConfig.getRedirectUri();
-        int clientIdLength = linkedInConfig.getClientId().length();
-
-        // Sanitized Debug Logging (zero secrets logged)
-        log.info("[LINKEDIN-OAUTH] endpoint={}", endpoint);
-        log.info("[LINKEDIN-OAUTH] redirectUri={}", redirectUri);
-        log.info("[LINKEDIN-OAUTH] scopes={}", scopes);
-        log.info("[LINKEDIN-OAUTH] clientIdLength={}", clientIdLength);
 
         String encodedScopes = encode(scopes);
         String encodedRedirectUri = encode(redirectUri);
         String encodedClientId = encode(linkedInConfig.getClientId());
         String encodedState = encode(state + ":" + restaurantId);
-
-        String sanitizedUrl = endpoint +
-                "?response_type=code" +
-                "&client_id=[REDACTED_LEN_" + clientIdLength + "]" +
-                "&redirect_uri=" + encodedRedirectUri +
-                "&scope=" + encodedScopes +
-                "&state=[REDACTED_STATE]";
-        log.info("[LINKEDIN-OAUTH] sanitizedAuthUrl={}", sanitizedUrl);
 
         return endpoint +
                "?response_type=code" +
@@ -359,30 +552,84 @@ public class SocialAccountServiceImpl implements SocialAccountService {
         if (isBlank(metaConfig.getAppId())) {
             throw new BadRequestException("CONFIGURATION REQUIRED: Meta credentials not configured.");
         }
+        String redirectUri = metaConfig.getRedirectUri();
+        validateMetaRedirectUri(redirectUri);
+
+        log.info("[Social] Facebook OAuth redirect URI={}, isAbsolute={}", redirectUri, URI.create(redirectUri.trim()).isAbsolute());
+
         try {
-            Map<String, Object> response = restClient.get()
-                    .uri("https://graph.facebook.com/v19.0/oauth/access_token" +
-                         "?client_id=" + metaConfig.getAppId() +
-                         "&client_secret=" + metaConfig.getAppSecret() +
-                         "&redirect_uri=" + encode(metaConfig.getRedirectUri()) +
-                         "&code=" + encode(code))
+            String responseBody = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .scheme("https")
+                            .host("graph.facebook.com")
+                            .path("/v19.0/oauth/access_token")
+                            .queryParam("client_id", metaConfig.getAppId())
+                            .queryParam("client_secret", metaConfig.getAppSecret())
+                            .queryParam("redirect_uri", redirectUri)
+                            .queryParam("code", code)
+                            .build())
                     .retrieve()
-                    .body(Map.class);
+                    .body(String.class);
+
+            Map<String, Object> response = parseMetaTokenResponse(responseBody);
 
             String accessToken = (String) response.get("access_token");
             Integer expiresIn = response.get("expires_in") instanceof Number n ? n.intValue() : null;
 
-            // Fetch account info
-            Map<String, Object> meResponse = restClient.get()
-                    .uri("https://graph.facebook.com/me?fields=id,name&access_token=" + accessToken)
+            // Fetch Facebook Pages managed by user via /me/accounts
+            String accountsJson = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .scheme("https")
+                            .host("graph.facebook.com")
+                            .path("/v19.0/me/accounts")
+                            .queryParam("fields", "id,name,access_token,category")
+                            .queryParam("access_token", accessToken)
+                            .build())
                     .retrieve()
-                    .body(Map.class);
+                    .body(String.class);
+
+            Map<String, Object> accountsResponse = objectMapper.readValue(
+                    accountsJson,
+                    new TypeReference<Map<String, Object>>() {}
+            );
+
+            List<Map<String, Object>> data = accountsResponse != null ? (List<Map<String, Object>>) accountsResponse.get("data") : null;
+            if (data != null && !data.isEmpty()) {
+                Map<String, Object> firstPage = data.get(0);
+                String pageId = (String) firstPage.get("id");
+                String pageName = (String) firstPage.get("name");
+                String pageAccessToken = (String) firstPage.get("access_token");
+                return new TokenResult(
+                        pageAccessToken != null ? pageAccessToken : accessToken,
+                        null,
+                        expiresIn != null ? LocalDateTime.now().plusSeconds(expiresIn) : null,
+                        pageName != null ? pageName : "Facebook Page",
+                        pageId
+                );
+            }
+
+            // Fallback to /me
+            String meJson = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .scheme("https")
+                            .host("graph.facebook.com")
+                            .path("/v19.0/me")
+                            .queryParam("fields", "id,name")
+                            .queryParam("access_token", accessToken)
+                            .build())
+                    .retrieve()
+                    .body(String.class);
+
+            Map<String, Object> meResponse = objectMapper.readValue(
+                    meJson,
+                    new TypeReference<Map<String, Object>>() {}
+            );
 
             return new TokenResult(
                     accessToken, null,
                     expiresIn != null ? LocalDateTime.now().plusSeconds(expiresIn) : null,
-                    (String) meResponse.get("name"),
-                    (String) meResponse.get("id")
+                    meResponse != null ? (String) meResponse.get("name") : null,
+                    meResponse != null ? (String) meResponse.get("id") : null
             );
         } catch (Exception e) {
             log.warn("[Social] Meta token exchange failed: {}", e.getMessage());
@@ -392,7 +639,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
 
     /**
      * Exchanges X (Twitter) OAuth 2.0 authorization code for tokens using PKCE verifier.
-     * Supports both confidential clients (HTTP Basic auth) and public clients.
      */
     @SuppressWarnings("unchecked")
     private TokenResult exchangeXTokens(String code, String codeVerifier) {
@@ -403,11 +649,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
             throw new BadRequestException("PKCE verification failure: missing code verifier for X OAuth callback.");
         }
         try {
-            log.debug("[X OAuth] Exchanging token: redirect_uri={}, hasCodeVerifier={}, isConfidentialClient={}",
-                    xConfig.getRedirectUri(),
-                    !isBlank(codeVerifier),
-                    !isBlank(xConfig.getClientSecret()));
-
             MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
             body.add("code", code);
             body.add("grant_type", "authorization_code");
@@ -420,17 +661,13 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                     .body(body);
 
-            // If confidential client (secret present), add Basic Auth header
             if (!isBlank(xConfig.getClientSecret())) {
                 String credentials = Base64.getEncoder().encodeToString(
                         (xConfig.getClientId() + ":" + xConfig.getClientSecret()).getBytes(StandardCharsets.UTF_8));
                 requestSpec.header("Authorization", "Basic " + credentials);
             }
 
-            Map<String, Object> response = requestSpec
-                    .retrieve()
-                    .body(Map.class);
-
+            Map<String, Object> response = requestSpec.retrieve().body(Map.class);
             if (response == null) {
                 throw new BadRequestException("X token endpoint returned empty response.");
             }
@@ -445,7 +682,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
 
             LocalDateTime expiresAt = expiresIn != null ? LocalDateTime.now().plusSeconds(expiresIn) : null;
 
-            // Fetch X user profile: GET /2/users/me
             String accountName = "X Account";
             String platformAccountId = null;
             try {
@@ -473,8 +709,7 @@ public class SocialAccountServiceImpl implements SocialAccountService {
         } catch (HttpClientErrorException e) {
             String responseBody = e.getResponseBodyAsString();
             log.warn("[Social] X token exchange failed: HTTP {} body={}", e.getStatusCode().value(), responseBody);
-            String safeMsg = parseOAuthError(responseBody, e.getStatusCode().value());
-            throw new BadRequestException("X OAuth error: " + safeMsg);
+            throw new BadRequestException("X OAuth error: " + responseBody);
         } catch (BadRequestException e) {
             throw e;
         } catch (Exception e) {
@@ -507,7 +742,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
             String refreshToken = (String) response.get("refresh_token");
             Integer expiresIn = response.get("expires_in") instanceof Number n ? n.intValue() : null;
 
-            // Fetch YouTube channel name
             String channelName = "YouTube Channel";
             String channelId = null;
             try {
@@ -535,18 +769,12 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                     expiresIn != null ? LocalDateTime.now().plusSeconds(expiresIn) : null,
                     channelName, channelId
             );
-        } catch (HttpClientErrorException e) {
-            log.warn("[Social] Google token exchange failed: HTTP {} body={}", e.getStatusCode().value(), e.getResponseBodyAsString());
-            throw new BadRequestException("Failed to exchange Google authorization code: " + e.getResponseBodyAsString());
         } catch (Exception e) {
             log.warn("[Social] Google token exchange failed: {}", e.getMessage());
             throw new BadRequestException("Failed to exchange Google authorization code: " + e.getMessage());
         }
     }
 
-    /**
-     * Exchanges LinkedIn authorization code for access token.
-     */
     @SuppressWarnings("unchecked")
     private TokenResult exchangeLinkedInTokens(String code) {
         if (isBlank(linkedInConfig.getClientId())) {
@@ -574,7 +802,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                 throw new BadRequestException("LinkedIn did not return an access token.");
             }
 
-            // Fetch member profile using LinkedIn userinfo endpoint (OpenID Connect)
             String memberName = "LinkedIn Member";
             String memberUrn = null;
             try {
@@ -596,26 +823,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                 }
             } catch (Exception ex) {
                 log.warn("[Social] Could not fetch LinkedIn profile: {}", ex.getMessage());
-                try {
-                    Map<String, Object> meResponse = restClient.get()
-                            .uri("https://api.linkedin.com/v2/me?projection=(id,localizedFirstName,localizedLastName)")
-                            .header("Authorization", "Bearer " + accessToken)
-                            .retrieve()
-                            .body(Map.class);
-
-                    if (meResponse != null) {
-                        String id = (String) meResponse.get("id");
-                        if (id != null) {
-                            memberUrn = "urn:li:person:" + id;
-                            String firstName = (String) meResponse.getOrDefault("localizedFirstName", "");
-                            String lastName = (String) meResponse.getOrDefault("localizedLastName", "");
-                            memberName = (firstName + " " + lastName).trim();
-                            if (memberName.isBlank()) memberName = "LinkedIn Member";
-                        }
-                    }
-                } catch (Exception ex2) {
-                    log.warn("[Social] LinkedIn /v2/me fallback also failed: {}", ex2.getMessage());
-                }
             }
 
             return new TokenResult(
@@ -623,11 +830,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                     expiresIn != null ? LocalDateTime.now().plusSeconds(expiresIn) : null,
                     memberName, memberUrn
             );
-        } catch (HttpClientErrorException e) {
-            log.warn("[Social] LinkedIn token exchange failed: HTTP {} body={}", e.getStatusCode().value(), e.getResponseBodyAsString());
-            throw new BadRequestException("Failed to exchange LinkedIn authorization code: " + e.getResponseBodyAsString());
-        } catch (BadRequestException e) {
-            throw e;
         } catch (Exception e) {
             log.warn("[Social] LinkedIn token exchange failed: {}", e.getMessage());
             throw new BadRequestException("Failed to exchange LinkedIn authorization code: " + e.getMessage());
@@ -636,20 +838,12 @@ public class SocialAccountServiceImpl implements SocialAccountService {
 
     // ─── PKCE Cryptographic Helpers ─────────────────────────────────────────────
 
-    /**
-     * Generates a high-entropy cryptographically random PKCE code_verifier string (RFC 7636).
-     * 32 random bytes encoded as unpadded URL-safe Base64 -> 43 characters.
-     */
     private String generatePkceVerifier() {
         byte[] randomBytes = new byte[32];
         SECURE_RANDOM.nextBytes(randomBytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
     }
 
-    /**
-     * Generates an S256 code_challenge from a code_verifier (RFC 7636 Section 4.2).
-     * code_challenge = BASE64URL-ENCODE(SHA256(ASCII(code_verifier))) without padding.
-     */
     private String generatePkceChallenge(String codeVerifier) {
         try {
             byte[] asciiBytes = codeVerifier.getBytes(StandardCharsets.US_ASCII);
@@ -661,30 +855,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
         }
     }
 
-    /**
-     * Parses OAuth error bodies and returns sanitized user-friendly explanations.
-     */
-    private String parseOAuthError(String responseBody, int statusCode) {
-        if (responseBody != null && !responseBody.isBlank()) {
-            if (responseBody.contains("invalid_client")) {
-                return "Invalid client credentials. Please verify your X_CLIENT_ID and X_CLIENT_SECRET in .env and X Developer Portal.";
-            } else if (responseBody.contains("invalid_grant")) {
-                return "Authorization code or PKCE verifier is invalid/expired. Please initiate connection again.";
-            } else if (responseBody.contains("redirect_uri_mismatch") || responseBody.contains("redirect_uri")) {
-                return "Redirect URI mismatch. Ensure X_REDIRECT_URI exactly matches the Callback URL configured in X Developer Portal.";
-            } else if (responseBody.contains("unauthorized_client")) {
-                return "Unauthorized client. Ensure your app in X Developer Portal has OAuth 2.0 enabled with Read and Write permissions.";
-            } else if (responseBody.contains("error_description")) {
-                int start = responseBody.indexOf("\"error_description\":\"") + 21;
-                int end = responseBody.indexOf("\"", start);
-                if (start > 20 && end > start) {
-                    return responseBody.substring(start, end);
-                }
-            }
-        }
-        return "HTTP " + statusCode + " error during token exchange";
-    }
-
     // ─── Helpers ────────────────────────────────────────────────────────────────
 
     private Platform parsePlatform(String platformStr) {
@@ -692,7 +862,56 @@ public class SocialAccountServiceImpl implements SocialAccountService {
             return Platform.valueOf(platformStr.toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new BadRequestException("Unsupported platform: " + platformStr +
-                    ". Supported: INSTAGRAM, FACEBOOK, TWITTER, YOUTUBE, LINKEDIN");
+                    ". Supported: FACEBOOK, LINKEDIN, YOUTUBE, INSTAGRAM");
+        }
+    }
+
+    private void validateMetaRedirectUri(String redirectUri) {
+        if (isBlank(redirectUri)) {
+            throw new BadRequestException(
+                    "CONFIGURATION REQUIRED: Meta redirect URI is not configured. " +
+                    "Please set the META_REDIRECT_URI environment variable to your full, absolute callback URL " +
+                    "(e.g., https://<your-domain>/api/social-accounts/FACEBOOK/callback).");
+        }
+        try {
+            URI uri = URI.create(redirectUri.trim());
+            if (!uri.isAbsolute() || isBlank(uri.getHost())) {
+                throw new BadRequestException(
+                        "CONFIGURATION ERROR: Meta redirect URI '" + redirectUri + "' must be an absolute URL with a valid host " +
+                        "(e.g., https://<your-domain>/api/social-accounts/FACEBOOK/callback).");
+            }
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException(
+                    "CONFIGURATION ERROR: Meta redirect URI '" + redirectUri + "' is not a valid URI: " + e.getMessage());
+        }
+    }
+
+    private Map<String, Object> parseMetaTokenResponse(String responseBody) {
+        if (isBlank(responseBody)) {
+            throw new BadRequestException("Empty response received from Meta OAuth service.");
+        }
+        try {
+            Map<String, Object> map = objectMapper.readValue(responseBody, new TypeReference<Map<String, Object>>() {});
+            if (map == null) {
+                throw new BadRequestException("Invalid response received from Meta OAuth service.");
+            }
+            if (map.containsKey("error")) {
+                Object errObj = map.get("error");
+                if (errObj instanceof Map<?, ?> errMap) {
+                    String msg = (String) errMap.get("message");
+                    String type = (String) errMap.get("type");
+                    Object code = errMap.get("code");
+                    log.warn("[Social] Meta OAuth error response: code={}, type={}, message={}", code, type, msg);
+                    throw new BadRequestException("Meta OAuth error (" + (code != null ? code : "unknown") + "): " + (msg != null ? msg : "Authorization failed"));
+                }
+                throw new BadRequestException("Meta OAuth error response received.");
+            }
+            return map;
+        } catch (BadRequestException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("[Social] Failed to parse Meta token response JSON: {}", e.getMessage());
+            throw new BadRequestException("Invalid response received from Meta OAuth service.");
         }
     }
 
@@ -724,7 +943,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                 .build();
     }
 
-    // Internal record for token exchange results — NEVER exposed to frontend
     private record TokenResult(
             String accessToken,
             String refreshToken,

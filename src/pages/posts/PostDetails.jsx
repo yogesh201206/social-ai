@@ -14,7 +14,7 @@ import Card from '../../components/Card'
 import { platformIcons, platformColors } from '../../data/postsData'
 
 // Platforms where publishing is not yet live
-const COMING_SOON_PLATFORMS = ['Instagram', 'Facebook']
+const COMING_SOON_PLATFORMS = ['Instagram']
 
 export default function PostDetails() {
   const { id } = useParams()
@@ -78,7 +78,7 @@ export default function PostDetails() {
     if (isComingSoon) {
       setPublishResult({
         status: 'error',
-        message: `${post.platform} publishing is coming soon. Currently live: X (Twitter), LinkedIn, YouTube.`,
+        message: `${post.platform} publishing is coming soon. Currently live: Facebook, LinkedIn, YouTube.`,
       })
       return
     }
@@ -267,7 +267,7 @@ export default function PostDetails() {
       {canPublishNow && isComingSoon && (
         <div className="flex items-start gap-3 p-4 rounded-2xl text-sm bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
           <Clock className="h-5 w-5 flex-shrink-0 mt-0.5" />
-          <span><strong>{post.platform}</strong> publishing is coming soon. Currently live platforms: X (Twitter), LinkedIn, YouTube.</span>
+          <span><strong>{post.platform}</strong> publishing is coming soon. Currently live platforms: Facebook, LinkedIn, YouTube.</span>
         </div>
       )}
 
@@ -410,35 +410,35 @@ export default function PostDetails() {
                 </div>
               )}
 
-              {post.platform === 'Twitter' && (
+              {post.platform === 'Facebook' && (
                 <div className="grid grid-cols-4 gap-3">
                   <div className="text-center p-3 rounded-xl bg-pink-50 dark:bg-pink-900/20">
                     <Heart className="h-4 w-4 text-pink-500 mx-auto mb-1.5" />
                     <p className="text-lg font-bold text-gray-900 dark:text-white">
                       {post.likes != null ? post.likes.toLocaleString() : '—'}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Likes</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Reactions</p>
                   </div>
                   <div className="text-center p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20">
                     <MessageCircle className="h-4 w-4 text-blue-500 mx-auto mb-1.5" />
                     <p className="text-lg font-bold text-gray-900 dark:text-white">
                       {post.comments != null ? post.comments.toLocaleString() : '—'}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Replies</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Comments</p>
                   </div>
                   <div className="text-center p-3 rounded-xl bg-green-50 dark:bg-green-900/20">
                     <Share2 className="h-4 w-4 text-green-500 mx-auto mb-1.5" />
                     <p className="text-lg font-bold text-gray-900 dark:text-white">
                       {post.shares != null ? post.shares.toLocaleString() : '—'}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Reposts</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Shares</p>
                   </div>
                   <div className="text-center p-3 rounded-xl bg-purple-50 dark:bg-purple-900/20">
                     <Eye className="h-4 w-4 text-purple-500 mx-auto mb-1.5" />
                     <p className="text-lg font-bold text-gray-900 dark:text-white">
                       {post.views != null ? post.views.toLocaleString() : '—'}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Views</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Impressions</p>
                   </div>
                 </div>
               )}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Moon, Sun, Bell, Shield, Palette, Link2, CheckCircle, XCircle, AlertTriangle, Loader2 } from 'lucide-react'
+import { Moon, Sun, Bell, Shield, Palette, Link2, CheckCircle, XCircle, AlertTriangle, Loader2, Facebook } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 import { useRestaurants } from '../context/RestaurantContext'
 import socialAccountService from '../services/socialAccountService'
@@ -23,6 +23,15 @@ export default function SettingsPanel() {
   const [socialError, setSocialError] = useState(null)
   const [connectingPlatform, setConnectingPlatform] = useState(null)
   const [selectedRestaurantId, setSelectedRestaurantId] = useState(null)
+
+  // Multi-page Facebook Page selection state
+  const [showPageSelectionModal, setShowPageSelectionModal] = useState(false)
+  const [pageSelectionToken, setPageSelectionToken] = useState(null)
+  const [candidatePages, setCandidatePages] = useState([])
+  const [selectedPageId, setSelectedPageId] = useState('')
+  const [pageSelectionLoading, setPageSelectionLoading] = useState(false)
+  const [pageSelectionSaving, setPageSelectionSaving] = useState(false)
+
   const [settings, setSettings] = useState({
     emailNotifications: true,
     pushNotifications: true,
@@ -39,13 +48,59 @@ export default function SettingsPanel() {
   // Auto-switch to social tab if redirected from OAuth callback
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.get('connected') || params.get('error')) {
+    const connected = params.get('connected')
+    const error = params.get('error')
+    const selectPage = params.get('select_page')
+    const selectionToken = params.get('selection_token')
+
+    if (connected || error || selectPage) {
       setActiveTab('social')
-      if (params.get('error')) {
-        setSocialError(`Connection cancelled or failed: ${params.get('error')}`)
+      if (error) {
+        setSocialError(`Connection cancelled or failed: ${error}`)
+      }
+      if (selectPage === 'FACEBOOK' && selectionToken) {
+        setPageSelectionToken(selectionToken)
+        setShowPageSelectionModal(true)
+        loadCandidatePages(selectionToken)
       }
     }
   }, [])
+
+  const loadCandidatePages = async (token) => {
+    setPageSelectionLoading(true)
+    setSocialError(null)
+    try {
+      const pages = await socialAccountService.getFacebookPages(token)
+      setCandidatePages(Array.isArray(pages) ? pages : [])
+      if (Array.isArray(pages) && pages.length > 0) {
+        setSelectedPageId(pages[0].id)
+      }
+    } catch (err) {
+      setSocialError(err.message || 'Failed to load Facebook Pages for selection')
+      setShowPageSelectionModal(false)
+    } finally {
+      setPageSelectionLoading(false)
+    }
+  }
+
+  const handleConfirmPageSelection = async () => {
+    if (!pageSelectionToken || !selectedPageId) return
+    setPageSelectionSaving(true)
+    try {
+      const connectedAccount = await socialAccountService.selectFacebookPage(pageSelectionToken, selectedPageId)
+      setSocialAccounts(prev => {
+        const filtered = prev.filter(a => a.platform !== 'FACEBOOK')
+        return [...filtered, connectedAccount]
+      })
+      setShowPageSelectionModal(false)
+      // Clean query params from URL
+      window.history.replaceState({}, document.title, window.location.pathname)
+    } catch (err) {
+      setSocialError(err.message || 'Failed to connect selected Facebook Page')
+    } finally {
+      setPageSelectionSaving(false)
+    }
+  }
 
   // Load social accounts when tab is opened
   useEffect(() => {
@@ -174,7 +229,7 @@ export default function SettingsPanel() {
           <div className="animate-fade-in">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Connected Social Accounts</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
-              Connect your restaurant's social accounts to publish posts directly from SocialFlow AI.
+              Connect your restaurant&apos;s Facebook Page, LinkedIn, or YouTube account to publish posts directly from SocialFlow AI.
             </p>
 
             {/* Restaurant selector */}
@@ -210,10 +265,11 @@ export default function SettingsPanel() {
             ) : (
               <div className="space-y-3">
                 {/* Active platforms — Real OAuth connection */}
-                {[{p:'TWITTER',label:'X (Twitter)',color:'from-gray-800 to-gray-900'},
-                  {p:'LINKEDIN',label:'LinkedIn',color:'from-blue-500 to-blue-700'},
-                  {p:'YOUTUBE',label:'YouTube',color:'from-red-600 to-red-700'},
-                ].map(({p, label, color}) => {
+                {[
+                  { p: 'FACEBOOK', label: 'Facebook', color: 'from-blue-600 to-blue-700' },
+                  { p: 'LINKEDIN', label: 'LinkedIn', color: 'from-blue-500 to-blue-700' },
+                  { p: 'YOUTUBE', label: 'YouTube', color: 'from-red-600 to-red-700' },
+                ].map(({ p, label, color }) => {
                   const account = socialAccounts.find(a => a.platform === p)
                   return (
                     <div key={p} className="flex items-center justify-between p-4 rounded-xl border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800/50">
@@ -266,10 +322,10 @@ export default function SettingsPanel() {
                   )
                 })}
 
-                {/* Coming Soon platforms — Instagram & Facebook */}
-                {[{p:'INSTAGRAM',label:'Instagram',color:'from-pink-500 to-purple-500'},
-                  {p:'FACEBOOK',label:'Facebook',color:'from-blue-600 to-blue-700'},
-                ].map(({p, label, color}) => (
+                {/* Coming Soon platform — Instagram (Next in line) */}
+                {[
+                  { p: 'INSTAGRAM', label: 'Instagram', color: 'from-pink-500 to-purple-500' },
+                ].map(({ p, label, color }) => (
                   <div key={p} className="flex items-center justify-between p-4 rounded-xl border border-gray-100 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/30">
                     <div className="flex items-center gap-3">
                       <div className={`h-9 w-9 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center opacity-60`}>
@@ -294,6 +350,80 @@ export default function SettingsPanel() {
                     </Button>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Facebook Multiple Page Selection Modal */}
+            {showPageSelectionModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-scale-up">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center text-white">
+                      <Facebook className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-white">Select Facebook Page</h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Choose which Facebook Page you want to connect to this restaurant.
+                      </p>
+                    </div>
+                  </div>
+
+                  {pageSelectionLoading ? (
+                    <div className="flex items-center justify-center py-8 text-gray-400 gap-2">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span className="text-sm">Fetching managed Facebook Pages...</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-60 overflow-y-auto py-2">
+                      {candidatePages.map((page) => (
+                        <label
+                          key={page.id}
+                          className={`flex items-center justify-between p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                            selectedPageId === page.id
+                              ? 'border-brand-500 bg-brand-50/70 dark:bg-brand-900/20'
+                              : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="radio"
+                              name="facebookPage"
+                              value={page.id}
+                              checked={selectedPageId === page.id}
+                              onChange={() => setSelectedPageId(page.id)}
+                              className="text-brand-600 focus:ring-brand-500"
+                            />
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900 dark:text-white">{page.name}</p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">{page.category || 'Facebook Page'}</p>
+                            </div>
+                          </div>
+                          <span className="text-[11px] font-mono text-gray-400">ID: {page.id}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 pt-2">
+                    <Button
+                      variant="secondary"
+                      className="flex-1"
+                      onClick={() => setShowPageSelectionModal(false)}
+                      disabled={pageSelectionSaving}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      className="flex-1"
+                      onClick={handleConfirmPageSelection}
+                      disabled={pageSelectionSaving || !selectedPageId || pageSelectionLoading}
+                      loading={pageSelectionSaving}
+                    >
+                      Connect Page
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
           </div>

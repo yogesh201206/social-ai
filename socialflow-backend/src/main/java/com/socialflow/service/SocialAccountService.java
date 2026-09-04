@@ -1,5 +1,8 @@
 package com.socialflow.service;
 
+import com.socialflow.dto.FacebookPageCandidateDto;
+import com.socialflow.dto.SelectFacebookPageRequest;
+import com.socialflow.dto.SocialAccountCallbackResult;
 import com.socialflow.dto.SocialAccountResponse;
 
 import java.util.List;
@@ -35,6 +38,22 @@ public interface SocialAccountService {
     SocialAccountResponse handleCallback(String platform, String code, String state);
 
     /**
+     * Handles the OAuth callback from the platform with multi-page support.
+     * If multiple Facebook pages are managed, returns requiresPageSelection=true and candidate pages.
+     */
+    SocialAccountCallbackResult handleCallbackWithResult(String platform, String code, String state);
+
+    /**
+     * Retrieves safe candidate Facebook Pages for a pending selection token.
+     */
+    List<FacebookPageCandidateDto> getFacebookCandidatePages(String selectionToken);
+
+    /**
+     * Finalizes connecting the chosen Facebook Page from candidate list.
+     */
+    SocialAccountResponse selectFacebookPage(SelectFacebookPageRequest request, String currentUserEmail);
+
+    /**
      * Disconnects a social account. Only the account owner may disconnect.
      *
      * @param id               the social account ID
@@ -42,3 +61,4 @@ public interface SocialAccountService {
      */
     void disconnect(Long id, String currentUserEmail);
 }
+

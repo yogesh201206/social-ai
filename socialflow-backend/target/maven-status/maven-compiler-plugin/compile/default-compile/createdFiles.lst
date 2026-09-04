@@ -31,6 +31,8 @@ com/socialflow/dto/BranchRequest$BranchRequestBuilder.class
 com/socialflow/dto/EmailCampaignRequest$EmailCampaignRequestBuilder.class
 com/socialflow/config/HuggingFaceConfig$Api.class
 com/socialflow/service/impl/RestaurantServiceImpl.class
+com/socialflow/service/impl/SocialAccountServiceImpl$4.class
+com/socialflow/service/impl/SocialAccountServiceImpl$PendingSelection.class
 com/socialflow/repository/EmailCampaignRepository.class
 com/socialflow/dto/AnalyticsResponse.class
 com/socialflow/dto/AuthResponse.class
@@ -47,6 +49,7 @@ com/socialflow/controller/PostController.class
 com/socialflow/entity/Branch.class
 com/socialflow/service/AiService.class
 com/socialflow/controller/RestaurantController.class
+com/socialflow/service/impl/SocialAccountServiceImpl$5.class
 com/socialflow/dto/ScheduleResponse$ScheduleResponseBuilder.class
 com/socialflow/repository/PostRepository.class
 com/socialflow/dto/LoginRequest.class
@@ -55,6 +58,7 @@ com/socialflow/dto/AiGenerateRequest$AiGenerateRequestBuilder.class
 com/socialflow/entity/AIHistory.class
 com/socialflow/dto/EmailCampaignResponse$EmailCampaignResponseBuilder.class
 com/socialflow/exception/ErrorDetails.class
+com/socialflow/dto/SelectFacebookPageRequest.class
 com/socialflow/service/impl/AiServiceImpl$1.class
 com/socialflow/entity/ScheduledPost$ScheduledPostBuilder.class
 com/socialflow/service/impl/ScheduledPostServiceImpl.class
@@ -69,6 +73,7 @@ com/socialflow/service/PostService.class
 com/socialflow/config/CorsConfig.class
 com/socialflow/controller/SocialAccountController.class
 com/socialflow/controller/AIHistoryController.class
+com/socialflow/dto/FacebookPageCandidateDto$FacebookPageCandidateDtoBuilder.class
 com/socialflow/dto/LoginRequest$LoginRequestBuilder.class
 com/socialflow/entity/UserStatus.class
 com/socialflow/service/impl/MediaStorageServiceImpl.class
@@ -76,8 +81,10 @@ com/socialflow/service/MediaStorageService$StoredMediaResult.class
 com/socialflow/exception/GlobalExceptionHandler.class
 com/socialflow/dto/RegisterRequest$RegisterRequestBuilder.class
 com/socialflow/dto/RestaurantResponse.class
+com/socialflow/dto/FacebookPageCandidateDto.class
 com/socialflow/service/publisher/TikTokPublisher.class
 com/socialflow/dto/AIHistoryResponse$AIHistoryResponseBuilder.class
+com/socialflow/dto/SocialAccountCallbackResult.class
 com/socialflow/controller/MediaController.class
 com/socialflow/dto/BranchResponse$BranchResponseBuilder.class
 com/socialflow/dto/AnalyticsResponse$AnalyticsResponseBuilder.class
@@ -101,6 +108,7 @@ com/socialflow/SocialFlowApplication.class
 com/socialflow/service/impl/BranchServiceImpl.class
 com/socialflow/config/CorsConfig$1.class
 com/socialflow/dto/PostRequest.class
+com/socialflow/service/impl/SocialAccountServiceImpl$3.class
 com/socialflow/service/impl/UserServiceImpl.class
 com/socialflow/entity/Post$PostBuilder.class
 com/socialflow/repository/SocialAccountRepository.class
@@ -119,11 +127,13 @@ com/socialflow/service/publisher/XPublisher.class
 com/socialflow/repository/RestaurantRepository.class
 com/socialflow/controller/AdminController.class
 com/socialflow/security/JwtTokenProvider.class
+com/socialflow/dto/SelectFacebookPageRequest$SelectFacebookPageRequestBuilder.class
 com/socialflow/exception/UnauthorizedException.class
 com/socialflow/repository/UserRepository.class
 com/socialflow/service/publisher/SocialMediaPublisherFactory$1.class
 com/socialflow/entity/ScheduledPost.class
 com/socialflow/service/impl/AdminServiceImpl.class
+com/socialflow/dto/SocialAccountCallbackResult$SocialAccountCallbackResultBuilder.class
 com/socialflow/dto/ScheduleRequest.class
 com/socialflow/service/impl/AiServiceImpl.class
 com/socialflow/dto/EmailCampaignRequest.class
@@ -131,6 +141,7 @@ com/socialflow/dto/AnalyticsOverviewDto.class
 com/socialflow/repository/ScheduledPostRepository.class
 com/socialflow/service/RestaurantService.class
 com/socialflow/entity/Analytics.class
+com/socialflow/service/publisher/FacebookPublisher$1.class
 com/socialflow/service/publisher/FacebookPublisher.class
 com/socialflow/dto/AdminDashboardDto$AdminDashboardDtoBuilder.class
 com/socialflow/entity/SocialAccount$SocialAccountBuilder.class
@@ -138,6 +149,7 @@ com/socialflow/service/impl/SocialAccountServiceImpl$TokenResult.class
 com/socialflow/dto/AiGenerateResponse.class
 com/socialflow/service/AIHistoryService.class
 com/socialflow/service/impl/PostServiceImpl.class
+com/socialflow/service/impl/SocialAccountServiceImpl$PendingCandidate.class
 com/socialflow/service/ScheduledPostPublisherJob.class
 com/socialflow/service/impl/MediaStorageServiceImpl$1.class
 com/socialflow/service/publisher/SocialMediaPublisher.class
@@ -156,3 +168,4 @@ com/socialflow/repository/AnalyticsRepository.class
 com/socialflow/dto/ScheduleResponse.class
 com/socialflow/controller/SchedulerController.class
 com/socialflow/config/SocialPlatformConfig$LinkedInConfig.class
+com/socialflow/service/impl/SocialAccountServiceImpl$2.class

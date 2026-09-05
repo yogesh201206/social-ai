@@ -31,3 +31,20 @@ socialflow-backend/uploads/
 socialflow-backend/uploads/temp/
 socialflow-backend/uploads/scheduled/
 socialflow-backend/target/
+
+
+.env
+.env.local
+.env.development
+.env.production
+.env.*.local
+
+# backend env files
+socialflow-backend/.env
+
+# Maven build
+socialflow-backend/target/
+
+# Node
+node_modules/
+dist/

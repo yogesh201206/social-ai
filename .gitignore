@@ -43,7 +43,6 @@ socialflow-backend/target/
 socialflow-backend/.env
 
 # Maven build
-socialflow-backend/target/
 
 # Node
 node_modules/

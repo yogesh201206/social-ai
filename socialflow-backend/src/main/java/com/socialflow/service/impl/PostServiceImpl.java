@@ -1,11 +1,13 @@
 package com.socialflow.service.impl;
 
+import com.socialflow.dto.PostMetricsDto;
 import com.socialflow.dto.PostRequest;
 import com.socialflow.dto.PostResponse;
 import com.socialflow.entity.*;
 import com.socialflow.exception.BadRequestException;
 import com.socialflow.exception.ResourceNotFoundException;
 import com.socialflow.exception.UnauthorizedException;
+import com.socialflow.repository.AnalyticsRepository;
 import com.socialflow.repository.BranchRepository;
 import com.socialflow.repository.PostRepository;
 import com.socialflow.repository.RestaurantRepository;
@@ -21,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -38,6 +41,7 @@ public class PostServiceImpl implements PostService {
     private final BranchRepository branchRepository;
     private final ScheduledPostRepository scheduledPostRepository;
     private final SocialAccountRepository socialAccountRepository;
+    private final AnalyticsRepository analyticsRepository;
     private final SocialMediaPublisherFactory publisherFactory;
     private final MediaStorageService mediaStorageService;
 
@@ -481,6 +485,9 @@ public class PostServiceImpl implements PostService {
             post.setStatus(PostStatus.PUBLISHED);
             post.setPublishedAt(LocalDateTime.now(ZoneOffset.UTC));
             post.setPlatformPostId(result.platformPostId());
+            if (result.platformPostUrl() != null && !result.platformPostUrl().isBlank()) {
+                post.setPlatformPostUrl(result.platformPostUrl());
+            }
             post.setFailureReason(null);
 
             // Clean up temporary/scheduled local video file after successful publish
@@ -551,6 +558,9 @@ public class PostServiceImpl implements PostService {
             post.setViews(metricsResult.views());
             post.setMetricsStatus(metricsResult.metricsStatus());
             post.setMetricsUpdatedAt(LocalDateTime.now(ZoneOffset.UTC));
+
+            // Sync with Analytics table for the restaurant and platform
+            updateAnalyticsTable(post);
         } else {
             post.setMetricsStatus(metricsResult.metricsStatus() != null ? metricsResult.metricsStatus() : "API_ERROR");
         }
@@ -558,7 +568,111 @@ public class PostServiceImpl implements PostService {
         return mapToPostResponse(postRepository.save(post));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public PostMetricsDto getMetricsDto(Long id, String currentUserEmail, boolean isAdmin) {
+        Post post = postRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Post not found with id: " + id));
+
+        if (!isAdmin && !post.getRestaurant().getOwner().getEmail().equalsIgnoreCase(currentUserEmail)) {
+            throw new UnauthorizedException("Not authorized");
+        }
+
+        String extUrl = buildExternalUrl(post.getPlatform(), post.getPlatformPostId());
+        Double engRate = null;
+        if (post.getViews() != null && post.getViews() > 0) {
+            long eng = (post.getLikes() != null ? post.getLikes() : 0)
+                    + (post.getComments() != null ? post.getComments() : 0)
+                    + (post.getShares() != null ? post.getShares() : 0);
+            engRate = Math.round(((double) eng / post.getViews() * 100.0) * 10.0) / 10.0;
+        }
+
+        return PostMetricsDto.builder()
+                .postId(post.getId())
+                .platform(post.getPlatform())
+                .platformPostId(post.getPlatformPostId())
+                .likes(post.getLikes())
+                .comments(post.getComments())
+                .shares(post.getShares())
+                .views(post.getViews())
+                .impressions(post.getViews())
+                .reach(post.getViews())
+                .engagement(engRate)
+                .metricsStatus(post.getMetricsStatus())
+                .errorMessage(post.getFailureReason())
+                .lastUpdated(post.getMetricsUpdatedAt())
+                .externalUrl(extUrl)
+                .build();
+    }
+
+    private void updateAnalyticsTable(Post post) {
+        try {
+            Long restaurantId = post.getRestaurant().getId();
+            Platform platform = post.getPlatform();
+            LocalDate today = LocalDate.now(ZoneOffset.UTC);
+
+            var analyticsOpt = analyticsRepository.findByRestaurantIdAndPlatformAndDate(restaurantId, platform, today);
+            Analytics analytics = analyticsOpt.orElseGet(() -> Analytics.builder()
+                    .restaurant(post.getRestaurant())
+                    .branch(post.getBranch())
+                    .platform(platform)
+                    .date(today)
+                    .followers(0)
+                    .build());
+
+            // Aggregate real values from published posts for this restaurant & platform
+            List<Post> publishedPosts = postRepository.findByRestaurantId(restaurantId).stream()
+                    .filter(p -> p.getStatus() == PostStatus.PUBLISHED && p.getPlatform() == platform)
+                    .toList();
+
+            int totalLikes = publishedPosts.stream().mapToInt(p -> p.getLikes() != null ? p.getLikes().intValue() : 0).sum();
+            int totalComments = publishedPosts.stream().mapToInt(p -> p.getComments() != null ? p.getComments().intValue() : 0).sum();
+            int totalShares = publishedPosts.stream().mapToInt(p -> p.getShares() != null ? p.getShares().intValue() : 0).sum();
+            int totalViews = publishedPosts.stream().mapToInt(p -> p.getViews() != null ? p.getViews().intValue() : 0).sum();
+
+            analytics.setLikes(totalLikes);
+            analytics.setComments(totalComments);
+            analytics.setShares(totalShares);
+            analytics.setImpressions(totalViews);
+            analytics.setReach(totalViews);
+
+            int totalEng = totalLikes + totalComments + totalShares;
+            double rate = totalViews > 0 ? ((double) totalEng / totalViews) * 100.0 : 0.0;
+            analytics.setEngagementRate(Math.round(rate * 10.0) / 10.0);
+
+            analyticsRepository.save(analytics);
+        } catch (Exception e) {
+            log.warn("[PostService] Could not update analytics table: {}", e.getMessage());
+        }
+    }
+
+    private String buildExternalUrl(Platform platform, String platformPostId) {
+        if (platformPostId == null || platformPostId.isBlank()) return null;
+        if (platform == null) return null;
+        return switch (platform) {
+            case FACEBOOK -> "https://www.facebook.com/" + platformPostId;
+            case YOUTUBE -> "https://www.youtube.com/watch?v=" + platformPostId;
+            case LINKEDIN -> platformPostId.startsWith("urn:")
+                    ? "https://www.linkedin.com/feed/update/" + platformPostId
+                    : "https://www.linkedin.com/feed/update/urn:li:share:" + platformPostId;
+            case TWITTER -> "https://x.com/i/status/" + platformPostId;
+            case INSTAGRAM -> "https://www.instagram.com/p/" + platformPostId;
+            default -> null;
+        };
+    }
+
     private PostResponse mapToPostResponse(Post p) {
+        String externalUrl = p.getPlatformPostUrl() != null && !p.getPlatformPostUrl().isBlank()
+                ? p.getPlatformPostUrl()
+                : buildExternalUrl(p.getPlatform(), p.getPlatformPostId());
+        Double engRate = null;
+        if (p.getViews() != null && p.getViews() > 0) {
+            long eng = (p.getLikes() != null ? p.getLikes() : 0)
+                    + (p.getComments() != null ? p.getComments() : 0)
+                    + (p.getShares() != null ? p.getShares() : 0);
+            engRate = Math.round(((double) eng / p.getViews() * 100.0) * 10.0) / 10.0;
+        }
+
         return PostResponse.builder()
                 .id(p.getId())
                 .title(p.getTitle())
@@ -578,11 +692,15 @@ public class PostServiceImpl implements PostService {
                 .timezone(p.getTimezone())
                 .publishedAt(p.getPublishedAt())
                 .platformPostId(p.getPlatformPostId())
+                .externalUrl(externalUrl)
                 .failureReason(p.getFailureReason())
                 .likes(p.getLikes())
                 .comments(p.getComments())
                 .shares(p.getShares())
                 .views(p.getViews())
+                .impressions(p.getViews())
+                .reach(p.getViews())
+                .engagementRate(engRate)
                 .metricsStatus(p.getMetricsStatus())
                 .metricsUpdatedAt(p.getMetricsUpdatedAt())
                 .createdAt(p.getCreatedAt())

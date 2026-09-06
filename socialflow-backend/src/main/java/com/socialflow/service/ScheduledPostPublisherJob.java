@@ -118,6 +118,9 @@ public class ScheduledPostPublisherJob {
                 post.setStatus(PostStatus.PUBLISHED);
                 post.setPublishedAt(LocalDateTime.now(ZoneOffset.UTC));
                 post.setPlatformPostId(result.platformPostId());
+                if (result.platformPostUrl() != null && !result.platformPostUrl().isBlank()) {
+                    post.setPlatformPostUrl(result.platformPostUrl());
+                }
                 post.setFailureReason(null);
 
                 // Clean up scheduled local media file after successful publish

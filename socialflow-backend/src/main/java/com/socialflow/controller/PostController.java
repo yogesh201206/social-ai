@@ -103,10 +103,21 @@ public class PostController {
     }
 
     /**
-     * POST /api/posts/{id}/metrics
-     * Fetches real performance metrics from the connected social media platform.
+     * GET /api/posts/{id}/metrics
+     * Returns the latest stored or refreshed metrics for the post.
      */
-    @PostMapping("/{id}/metrics")
+    @GetMapping("/{id}/metrics")
+    public ResponseEntity<com.socialflow.dto.PostMetricsDto> getMetrics(@PathVariable Long id, Authentication authentication) {
+        String email = authentication != null ? authentication.getName() : "";
+        return ResponseEntity.ok(postService.getMetricsDto(id, email, isAdmin(authentication)));
+    }
+
+    /**
+     * POST /api/posts/{id}/metrics
+     * POST /api/posts/{id}/refresh-metrics
+     * Fetches fresh real performance metrics from the connected social media platform.
+     */
+    @PostMapping(value = {"/{id}/metrics", "/{id}/refresh-metrics"})
     public ResponseEntity<PostResponse> refreshMetrics(@PathVariable Long id, Authentication authentication) {
         String email = authentication != null ? authentication.getName() : "";
         return ResponseEntity.ok(postService.refreshMetrics(id, email, isAdmin(authentication)));

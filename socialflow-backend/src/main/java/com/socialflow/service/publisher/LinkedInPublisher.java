@@ -1,5 +1,7 @@
 package com.socialflow.service.publisher;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.socialflow.entity.Post;
 import com.socialflow.entity.SocialAccount;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +32,7 @@ import java.util.*;
 public class LinkedInPublisher implements SocialMediaPublisher {
 
     private final RestClient restClient;
+    private final ObjectMapper objectMapper;
 
     @Override
     public PublishResult publish(Post post, SocialAccount account) {
@@ -353,13 +356,17 @@ public class LinkedInPublisher implements SocialMediaPublisher {
             String encodedUrn = URLEncoder.encode(platformPostId, StandardCharsets.UTF_8);
             URI uri = URI.create("https://api.linkedin.com/v2/socialMetadata/" + encodedUrn);
 
-            @SuppressWarnings("unchecked")
-            Map<String, Object> response = restClient.get()
+            String responseBody = restClient.get()
                     .uri(uri)
                     .header("Authorization", "Bearer " + accessToken)
                     .header("X-Restli-Protocol-Version", "2.0.0")
                     .retrieve()
-                    .body(Map.class);
+                    .body(String.class);
+
+            Map<String, Object> response = null;
+            if (responseBody != null && !responseBody.isBlank()) {
+                response = objectMapper.readValue(responseBody, new TypeReference<Map<String, Object>>() {});
+            }
 
             if (response != null) {
                 Long likes = null;

@@ -46,6 +46,7 @@ public class SocialAccountServiceImpl implements SocialAccountService {
     private final UserRepository userRepository;
     private final RestaurantRepository restaurantRepository;
     private final SocialPlatformConfig.MetaConfig metaConfig;
+    private final SocialPlatformConfig.InstagramConfig instagramConfig;
     private final SocialPlatformConfig.XConfig xConfig;
     private final SocialPlatformConfig.GoogleConfig googleConfig;
     private final SocialPlatformConfig.LinkedInConfig linkedInConfig;
@@ -69,14 +70,6 @@ public class SocialAccountServiceImpl implements SocialAccountService {
     @Transactional
     public Map<String, String> initiateConnect(String platformStr, Long restaurantId, String currentUserEmail) {
         Platform platform = parsePlatform(platformStr);
-
-        // Block Instagram — Coming Soon (Next in line)
-        if (platform == Platform.INSTAGRAM) {
-            throw new BadRequestException(
-                    "Instagram integration is coming soon. " +
-                    "Social account connection has not been enabled yet. " +
-                    "Please check back after Meta Business verification is complete.");
-        }
 
         // Validate restaurant ownership
         Restaurant restaurant = restaurantRepository.findById(restaurantId)
@@ -422,11 +415,39 @@ public class SocialAccountServiceImpl implements SocialAccountService {
 
     private String buildOAuthUrl(Platform platform, String state, Long restaurantId, String codeVerifier) {
         return switch (platform) {
-            case INSTAGRAM, FACEBOOK -> buildMetaOAuthUrl(platform, state, restaurantId);
+            case INSTAGRAM -> buildInstagramOAuthUrl(state, restaurantId);
+            case FACEBOOK -> buildMetaOAuthUrl(platform, state, restaurantId);
             case TWITTER  -> buildXOAuthUrl(state, codeVerifier);
             case YOUTUBE  -> buildGoogleOAuthUrl(state, restaurantId);
             case LINKEDIN -> buildLinkedInOAuthUrl(state, restaurantId);
         };
+    }
+
+    /**
+     * Builds Instagram Business Login OAuth 2.0 authorization URL.
+     */
+    private String buildInstagramOAuthUrl(String state, Long restaurantId) {
+        if (isBlank(instagramConfig.getClientId()) || isBlank(instagramConfig.getClientSecret())) {
+            throw new BadRequestException(
+                    "CONFIGURATION REQUIRED: Instagram client credentials are not configured. " +
+                    "Please set INSTAGRAM_CLIENT_ID and INSTAGRAM_CLIENT_SECRET environment variables. " +
+                    "Configure your app at https://developers.facebook.com/");
+        }
+
+        String redirectUri = instagramConfig.getRedirectUri();
+        validateInstagramRedirectUri(redirectUri);
+
+        String scopes = "instagram_business_basic,instagram_business_content_publish";
+        String endpoint = "https://api.instagram.com/oauth/authorize";
+
+        return endpoint +
+               "?enable_fb_login=0" +
+               "&force_authentication=1" +
+               "&client_id=" + encode(instagramConfig.getClientId()) +
+               "&redirect_uri=" + encode(redirectUri) +
+               "&response_type=code" +
+               "&scope=" + encode(scopes) +
+               "&state=" + encode(state + ":" + restaurantId);
     }
 
     private String buildMetaOAuthUrl(Platform platform, String state, Long restaurantId) {
@@ -540,11 +561,148 @@ public class SocialAccountServiceImpl implements SocialAccountService {
 
     private TokenResult exchangeCodeForTokens(Platform platform, String code, Long restaurantId, String pkceVerifier) {
         return switch (platform) {
-            case INSTAGRAM, FACEBOOK -> exchangeMetaTokens(code);
+            case INSTAGRAM -> exchangeInstagramTokens(code);
+            case FACEBOOK -> exchangeMetaTokens(code);
             case TWITTER  -> exchangeXTokens(code, pkceVerifier);
             case YOUTUBE  -> exchangeGoogleTokens(code);
             case LINKEDIN -> exchangeLinkedInTokens(code);
         };
+    }
+
+    /**
+     * Exchanges Instagram Business Login OAuth authorization code for tokens,
+     * exchanges for a long-lived access token, and retrieves the account profile.
+     */
+    @SuppressWarnings("unchecked")
+    private TokenResult exchangeInstagramTokens(String code) {
+        if (isBlank(instagramConfig.getClientId()) || isBlank(instagramConfig.getClientSecret())) {
+            throw new BadRequestException("CONFIGURATION REQUIRED: Instagram credentials not configured.");
+        }
+
+        String redirectUri = instagramConfig.getRedirectUri();
+        validateInstagramRedirectUri(redirectUri);
+
+        try {
+            // Step 1: Exchange code for short-lived User Access Token via POST https://api.instagram.com/oauth/access_token
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("client_id", instagramConfig.getClientId());
+            body.add("client_secret", instagramConfig.getClientSecret());
+            body.add("grant_type", "authorization_code");
+            body.add("redirect_uri", redirectUri);
+            body.add("code", code);
+
+            String tokenResponseBody = restClient.post()
+                    .uri("https://api.instagram.com/oauth/access_token")
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(body)
+                    .retrieve()
+                    .body(String.class);
+
+            Map<String, Object> tokenResponse = parseInstagramResponse(tokenResponseBody, "Instagram token exchange");
+
+            if (tokenResponse == null || !tokenResponse.containsKey("access_token")) {
+                throw new BadRequestException("Failed to obtain Instagram access token.");
+            }
+
+            String accessToken = (String) tokenResponse.get("access_token");
+            final String shortLivedAccessToken = accessToken;
+            Object userIdObj = tokenResponse.get("user_id");
+            String userId = userIdObj != null ? String.valueOf(userIdObj) : null;
+
+            // Step 2: Exchange short-lived token for long-lived (60-day) token via https://graph.instagram.com/access_token
+            LocalDateTime expiresAt = null;
+            try {
+                String longLivedResponseBody = restClient.get()
+                        .uri(uriBuilder -> uriBuilder
+                                .scheme("https")
+                                .host("graph.instagram.com")
+                                .path("/access_token")
+                                .queryParam("grant_type", "ig_exchange_token")
+                                .queryParam("client_secret", instagramConfig.getClientSecret())
+                                .queryParam("access_token", shortLivedAccessToken)
+                                .build())
+                        .retrieve()
+                        .body(String.class);
+
+                Map<String, Object> longLivedResponse = parseInstagramResponse(longLivedResponseBody, "Instagram long-lived token exchange");
+                if (longLivedResponse != null && longLivedResponse.containsKey("access_token")) {
+                    accessToken = (String) longLivedResponse.get("access_token");
+                    Integer expiresIn = longLivedResponse.get("expires_in") instanceof Number n ? n.intValue() : null;
+                    if (expiresIn != null) {
+                        expiresAt = LocalDateTime.now().plusSeconds(expiresIn);
+                    }
+                }
+            } catch (Exception ex) {
+                log.warn("[Social] Could not exchange short-lived Instagram token for long-lived token, continuing with short-lived token: {}", ex.getMessage());
+            }
+
+            // Step 3: Fetch Instagram Profile (ID and Username) via https://graph.instagram.com/v20.0/me
+            String accountName = "Instagram Account";
+            String platformAccountId = userId;
+
+            try {
+                final String finalToken = accessToken;
+                String profileResponseBody = null;
+                try {
+                    profileResponseBody = restClient.get()
+                            .uri(uriBuilder -> uriBuilder
+                                    .scheme("https")
+                                    .host("graph.instagram.com")
+                                    .path("/v20.0/me")
+                                    .queryParam("fields", "id,username,name,account_type")
+                                    .queryParam("access_token", finalToken)
+                                    .build())
+                            .retrieve()
+                            .body(String.class);
+                } catch (Exception e1) {
+                    // Fallback to /{user_id}
+                    if (userId != null && !userId.isBlank()) {
+                        profileResponseBody = restClient.get()
+                                .uri(uriBuilder -> uriBuilder
+                                        .scheme("https")
+                                        .host("graph.instagram.com")
+                                        .path("/" + userId)
+                                        .queryParam("fields", "id,username,name,account_type")
+                                        .queryParam("access_token", finalToken)
+                                        .build())
+                                .retrieve()
+                                .body(String.class);
+                    }
+                }
+
+                if (profileResponseBody != null) {
+                    Map<String, Object> profileResponse = parseInstagramResponse(profileResponseBody, "Instagram profile fetch");
+                    if (profileResponse != null) {
+                        String fetchedId = (String) profileResponse.get("id");
+                        if (fetchedId != null && !fetchedId.isBlank()) {
+                            platformAccountId = fetchedId;
+                        }
+                        String username = (String) profileResponse.get("username");
+                        if (username != null && !username.isBlank()) {
+                            accountName = username.startsWith("@") ? username : "@" + username;
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                log.warn("[Social] Could not fetch Instagram account profile: {}", ex.getMessage());
+            }
+
+            if (platformAccountId == null || platformAccountId.isBlank()) {
+                throw new BadRequestException("Could not obtain a valid Instagram Account ID.");
+            }
+
+            return new TokenResult(accessToken, null, expiresAt, accountName, platformAccountId);
+
+        } catch (HttpClientErrorException e) {
+            String body = e.getResponseBodyAsString();
+            log.warn("[Social] Instagram OAuth error (HTTP {}): {}", e.getStatusCode().value(), body);
+            throw new BadRequestException("Instagram OAuth error: " + body);
+        } catch (BadRequestException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("[Social] Unexpected error during Instagram OAuth callback: {}", e.getMessage());
+            throw new BadRequestException("Failed to exchange Instagram authorization code: " + e.getMessage());
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -863,6 +1021,61 @@ public class SocialAccountServiceImpl implements SocialAccountService {
         } catch (IllegalArgumentException e) {
             throw new BadRequestException("Unsupported platform: " + platformStr +
                     ". Supported: FACEBOOK, LINKEDIN, YOUTUBE, INSTAGRAM");
+        }
+    }
+
+    private void validateInstagramRedirectUri(String redirectUri) {
+        if (isBlank(redirectUri)) {
+            throw new BadRequestException(
+                    "CONFIGURATION REQUIRED: Instagram redirect URI is not configured. " +
+                    "Please set the INSTAGRAM_REDIRECT_URI environment variable to your full, absolute callback URL " +
+                    "(e.g., https://<your-domain>/api/social-accounts/INSTAGRAM/callback).");
+        }
+        try {
+            URI uri = URI.create(redirectUri.trim());
+            if (!uri.isAbsolute() || isBlank(uri.getHost())) {
+                throw new BadRequestException(
+                        "CONFIGURATION ERROR: Instagram redirect URI '" + redirectUri + "' must be an absolute URL with a valid host " +
+                        "(e.g., https://<your-domain>/api/social-accounts/INSTAGRAM/callback).");
+            }
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException(
+                    "CONFIGURATION ERROR: Instagram redirect URI '" + redirectUri + "' is not a valid URI: " + e.getMessage());
+        }
+    }
+
+    private Map<String, Object> parseInstagramResponse(String responseBody, String context) {
+        if (isBlank(responseBody)) {
+            throw new BadRequestException("Empty response received from " + context);
+        }
+        try {
+            Map<String, Object> map = objectMapper.readValue(responseBody, new TypeReference<Map<String, Object>>() {});
+            if (map == null) {
+                throw new BadRequestException("Invalid response received from " + context);
+            }
+            if (map.containsKey("error")) {
+                Object errObj = map.get("error");
+                if (errObj instanceof Map<?, ?> errMap) {
+                    String msg = (String) errMap.get("message");
+                    String errorType = (String) errMap.get("error_type");
+                    Object code = errMap.get("code");
+                    log.warn("[Social] Instagram error response: code={}, error_type={}, message={}", code, errorType, msg);
+                    throw new BadRequestException("Instagram OAuth error (" + (code != null ? code : "unknown") + "): " + (msg != null ? msg : "Authorization failed"));
+                }
+                if (errObj instanceof String errStr) {
+                    throw new BadRequestException("Instagram OAuth error: " + errStr);
+                }
+                throw new BadRequestException("Instagram OAuth error response received.");
+            }
+            if (map.containsKey("error_message")) {
+                throw new BadRequestException("Instagram OAuth error: " + map.get("error_message"));
+            }
+            return map;
+        } catch (BadRequestException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("[Social] Failed to parse Instagram response JSON: {}", e.getMessage());
+            throw new BadRequestException("Invalid response received from " + context);
         }
     }
 

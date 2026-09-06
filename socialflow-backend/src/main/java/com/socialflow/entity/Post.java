@@ -64,6 +64,10 @@ public class Post {
     @Column(name = "platform_post_id", length = 200)
     private String platformPostId;
 
+    /** Direct permalink / URL to view post on external platform */
+    @Column(name = "platform_post_url", length = 500)
+    private String platformPostUrl;
+
     /** Safe error message when status is FAILED */
     @Column(name = "failure_reason", length = 500)
     private String failureReason;

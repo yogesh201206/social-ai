@@ -202,12 +202,16 @@ public class YouTubePublisher implements SocialMediaPublisher {
         }
 
         try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> response = restClient.get()
+            String responseBody = restClient.get()
                     .uri("https://www.googleapis.com/youtube/v3/videos?part=statistics&id=" + platformPostId)
                     .header("Authorization", "Bearer " + accessToken)
                     .retrieve()
-                    .body(Map.class);
+                    .body(String.class);
+
+            Map<String, Object> response = null;
+            if (responseBody != null && !responseBody.isBlank()) {
+                response = objectMapper.readValue(responseBody, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+            }
 
             if (response != null && response.get("items") instanceof List<?> items && !items.isEmpty()) {
                 if (items.get(0) instanceof Map<?, ?> itemMap && itemMap.get("statistics") instanceof Map<?, ?> stats) {

@@ -44,7 +44,7 @@ public class MediaController {
         ));
     }
 
-    @GetMapping("/files/{fileName:.+}")
+    @GetMapping({"/files/{fileName:.+}", "/{fileName:.+}"})
     public ResponseEntity<Resource> serveFile(@PathVariable String fileName) {
         Resource resource = mediaStorageService.loadResource(fileName);
 

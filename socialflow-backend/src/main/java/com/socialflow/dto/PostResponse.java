@@ -31,8 +31,10 @@ public class PostResponse {
     private LocalDateTime publishedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-    /** Platform post ID returned after successful publishing (e.g., Instagram post ID) */
+    /** Platform post ID returned after successful publishing (e.g., Facebook/YouTube post ID) */
     private String platformPostId;
+    /** Direct URL to view post on the external social platform */
+    private String externalUrl;
     /** Error message when status is FAILED */
     private String failureReason;
     /** Real performance metrics */
@@ -40,6 +42,9 @@ public class PostResponse {
     private Long comments;
     private Long shares;
     private Long views;
+    private Long impressions;
+    private Long reach;
+    private Double engagementRate;
     private String metricsStatus;
     private LocalDateTime metricsUpdatedAt;
 }

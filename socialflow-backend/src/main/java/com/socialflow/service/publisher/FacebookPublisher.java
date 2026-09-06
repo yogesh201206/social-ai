@@ -1,13 +1,13 @@
 package com.socialflow.service.publisher;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.socialflow.entity.Post;
 import com.socialflow.entity.SocialAccount;
 import com.socialflow.service.MediaStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
@@ -15,13 +15,12 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Real Meta Graph API Facebook Page Publisher.
  * Handles text and photo publishing, external deletion, and real engagement metrics.
- * Zero fake metrics or mock data. Never logs access tokens.
+ * Safely inspects token permissions and diagnostics. Never logs access tokens.
  */
 @Component
 @RequiredArgsConstructor
@@ -32,6 +31,10 @@ public class FacebookPublisher implements SocialMediaPublisher {
 
     private final RestClient restClient;
     private final MediaStorageService mediaStorageService;
+    private final ObjectMapper objectMapper;
+
+    public record MetaErrorInfo(String message, String type, int code, int errorSubcode) {}
+    private record EngagementResult(boolean success, Long likes, Long comments, Long shares, boolean isPermissionError, String errorMessage) {}
 
     @Override
     public PublishResult publish(Post post, SocialAccount account) {
@@ -72,7 +75,6 @@ public class FacebookPublisher implements SocialMediaPublisher {
     /**
      * Publishes a text-only post to the Facebook Page feed: POST /{page-id}/feed
      */
-    @SuppressWarnings("unchecked")
     private PublishResult publishFeedMessage(String pageId, String message, String pageAccessToken) {
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
         body.add("message", message != null ? message : "");
@@ -80,17 +82,28 @@ public class FacebookPublisher implements SocialMediaPublisher {
 
         log.info("[Facebook] Publishing feed message to Page {}", pageId);
 
-        Map<String, Object> response = restClient.post()
+        String responseBody = restClient.post()
                 .uri(GRAPH_API_BASE + "/" + pageId + "/feed")
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .body(body)
                 .retrieve()
-                .body(Map.class);
+                .body(String.class);
 
-        if (response != null && response.containsKey("id")) {
-            String postId = (String) response.get("id");
-            log.info("[Facebook] Successfully published text post to Page {} -> platformPostId={}", pageId, postId);
-            return PublishResult.success(postId);
+        Map<String, Object> response = parseMetaJson(responseBody);
+
+        if (response != null) {
+            if (response.containsKey("error")) {
+                String errorMsg = formatMetaError(response.get("error"));
+                log.warn("[Facebook] Publish feed error from Meta API: {}", errorMsg);
+                return PublishResult.failure(errorMsg);
+            }
+            if (response.containsKey("id")) {
+                String postId = String.valueOf(response.get("id"));
+                if (postId != null && !postId.isBlank() && !"null".equalsIgnoreCase(postId)) {
+                    log.info("[Facebook] Successfully published text post to Page {} -> platformPostId={}", pageId, postId);
+                    return PublishResult.success(postId);
+                }
+            }
         }
 
         return PublishResult.failure("Facebook API returned response without post ID.");
@@ -99,7 +112,6 @@ public class FacebookPublisher implements SocialMediaPublisher {
     /**
      * Publishes a photo post with caption to the Facebook Page: POST /{page-id}/photos
      */
-    @SuppressWarnings("unchecked")
     private PublishResult publishPhoto(String pageId, String caption, String mediaPath, String imageUrl, String pageAccessToken) {
         byte[] imageBytes = null;
         String fileName = "photo.jpg";
@@ -130,19 +142,26 @@ public class FacebookPublisher implements SocialMediaPublisher {
 
             log.info("[Facebook] Uploading photo binary ({} bytes) to Page {}", imageBytes.length, pageId);
 
-            Map<String, Object> response = restClient.post()
+            String responseBody = restClient.post()
                     .uri(GRAPH_API_BASE + "/" + pageId + "/photos")
                     .contentType(MediaType.MULTIPART_FORM_DATA)
                     .body(multipartBody)
                     .retrieve()
-                    .body(Map.class);
+                    .body(String.class);
+
+            Map<String, Object> response = parseMetaJson(responseBody);
 
             if (response != null) {
-                String postId = (String) response.get("post_id");
-                if (postId == null || postId.isBlank()) {
-                    postId = (String) response.get("id");
+                if (response.containsKey("error")) {
+                    String errorMsg = formatMetaError(response.get("error"));
+                    log.warn("[Facebook] Publish photo binary error from Meta API: {}", errorMsg);
+                    return PublishResult.failure(errorMsg);
                 }
-                if (postId != null && !postId.isBlank()) {
+                String postId = response.get("post_id") != null ? String.valueOf(response.get("post_id")) : null;
+                if (postId == null || postId.isBlank() || "null".equalsIgnoreCase(postId)) {
+                    postId = response.get("id") != null ? String.valueOf(response.get("id")) : null;
+                }
+                if (postId != null && !postId.isBlank() && !"null".equalsIgnoreCase(postId)) {
                     log.info("[Facebook] Successfully published photo to Page {} -> platformPostId={}", pageId, postId);
                     return PublishResult.success(postId);
                 }
@@ -159,19 +178,26 @@ public class FacebookPublisher implements SocialMediaPublisher {
 
             log.info("[Facebook] Publishing photo via URL to Page {}", pageId);
 
-            Map<String, Object> response = restClient.post()
+            String responseBody = restClient.post()
                     .uri(GRAPH_API_BASE + "/" + pageId + "/photos")
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                     .body(body)
                     .retrieve()
-                    .body(Map.class);
+                    .body(String.class);
+
+            Map<String, Object> response = parseMetaJson(responseBody);
 
             if (response != null) {
-                String postId = (String) response.get("post_id");
-                if (postId == null || postId.isBlank()) {
-                    postId = (String) response.get("id");
+                if (response.containsKey("error")) {
+                    String errorMsg = formatMetaError(response.get("error"));
+                    log.warn("[Facebook] Publish photo URL error from Meta API: {}", errorMsg);
+                    return PublishResult.failure(errorMsg);
                 }
-                if (postId != null && !postId.isBlank()) {
+                String postId = response.get("post_id") != null ? String.valueOf(response.get("post_id")) : null;
+                if (postId == null || postId.isBlank() || "null".equalsIgnoreCase(postId)) {
+                    postId = response.get("id") != null ? String.valueOf(response.get("id")) : null;
+                }
+                if (postId != null && !postId.isBlank() && !"null".equalsIgnoreCase(postId)) {
                     log.info("[Facebook] Successfully published photo via URL to Page {} -> platformPostId={}", pageId, postId);
                     return PublishResult.success(postId);
                 }
@@ -198,10 +224,12 @@ public class FacebookPublisher implements SocialMediaPublisher {
         try {
             log.info("[Facebook] Deleting post {} from Facebook Page", platformPostId);
 
-            Map<?, ?> response = restClient.delete()
+            String responseBody = restClient.delete()
                     .uri(GRAPH_API_BASE + "/" + platformPostId + "?access_token=" + pageAccessToken)
                     .retrieve()
-                    .body(Map.class);
+                    .body(String.class);
+
+            Map<String, Object> response = parseMetaJson(responseBody);
 
             boolean success = response != null && Boolean.TRUE.equals(response.get("success"));
             if (success) {
@@ -224,7 +252,6 @@ public class FacebookPublisher implements SocialMediaPublisher {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public MetricsResult fetchMetrics(Post post, SocialAccount account) {
         if (post == null || post.getPlatformPostId() == null || post.getPlatformPostId().isBlank()) {
             return MetricsResult.notFetched("No platform post ID");
@@ -236,94 +263,58 @@ public class FacebookPublisher implements SocialMediaPublisher {
 
         String platformPostId = post.getPlatformPostId();
         String pageAccessToken = account.getAccessToken();
+        String pageId = account.getPlatformAccountId();
 
-        Long likes = 0L;
-        Long comments = 0L;
-        Long shares = 0L;
-        Long views = null;
+        // 1. Diagnostic logging (Step 1 & Step 2)
+        logFacebookDiagnostics(pageAccessToken, pageId, platformPostId);
 
-        try {
-            // Fetch reactions summary, comments summary, shares count, and insights impressions
-            String fields = "shares,comments.summary(true),reactions.summary(true),insights.metric(post_impressions,post_engaged_users)";
-            Map<String, Object> response = restClient.get()
-                    .uri(GRAPH_API_BASE + "/" + platformPostId + "?fields=" + fields + "&access_token=" + pageAccessToken)
-                    .retrieve()
-                    .body(Map.class);
-
-            if (response != null) {
-                // Reactions
-                if (response.get("reactions") instanceof Map<?, ?> reactionsMap) {
-                    if (reactionsMap.get("summary") instanceof Map<?, ?> summaryMap) {
-                        likes = extractCount(summaryMap.get("total_count"));
-                    }
-                }
-
-                // Comments
-                if (response.get("comments") instanceof Map<?, ?> commentsMap) {
-                    if (commentsMap.get("summary") instanceof Map<?, ?> summaryMap) {
-                        comments = extractCount(summaryMap.get("total_count"));
-                    }
-                }
-
-                // Shares
-                if (response.get("shares") instanceof Map<?, ?> sharesMap) {
-                    shares = extractCount(sharesMap.get("count"));
-                }
-
-                // Insights (impressions / reach)
-                if (response.get("insights") instanceof Map<?, ?> insightsMap) {
-                    if (insightsMap.get("data") instanceof List<?> dataList) {
-                        for (Object item : dataList) {
-                            if (item instanceof Map<?, ?> metricItem) {
-                                String name = (String) metricItem.get("name");
-                                if ("post_impressions".equals(name) && metricItem.get("values") instanceof List<?> valuesList && !valuesList.isEmpty()) {
-                                    if (valuesList.get(0) instanceof Map<?, ?> valueMap) {
-                                        views = extractCount(valueMap.get("value"));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                log.info("[Facebook] Fetched real metrics for post {} -> reactions={}, comments={}, shares={}, impressions={}",
-                        platformPostId, likes, comments, shares, views);
-                return MetricsResult.available(likes, comments, shares, views);
+        // 2. Step 5: Primary Query - Fetch Real Basic Post Engagement (Reactions, Comments, Shares)
+        EngagementResult engagement = fetchPostEngagement(platformPostId, pageAccessToken);
+        if (!engagement.success()) {
+            if (engagement.isPermissionError()) {
+                return MetricsResult.permissionRequired(engagement.errorMessage());
             }
-
-            return MetricsResult.available(0L, 0L, 0L, null);
-        } catch (HttpClientErrorException e) {
-            String body = e.getResponseBodyAsString();
-            if (e.getStatusCode().value() == 400 && (body.contains("read_insights") || body.contains("(#100)") || body.contains("(#200)"))) {
-                // Fallback: query without insights
-                return fetchBaseEngagementOnly(platformPostId, pageAccessToken);
-            }
-            String sanitizedError = parseMetaError(body, e.getStatusCode().value());
-            log.warn("[Facebook] Metrics fetch error for {}: {}", platformPostId, sanitizedError);
-            if (sanitizedError.contains("permission") || sanitizedError.contains("OAuthException")) {
-                return MetricsResult.permissionRequired(sanitizedError);
-            }
-            return MetricsResult.error(sanitizedError);
-        } catch (Exception e) {
-            log.warn("[Facebook] Error fetching metrics for {}: {}", platformPostId, e.getMessage());
-            return MetricsResult.error("Failed to fetch Facebook metrics: " + e.getMessage());
+            return MetricsResult.error(engagement.errorMessage());
         }
+
+        Long likes = engagement.likes();
+        Long comments = engagement.comments();
+        Long shares = engagement.shares();
+
+        // 3. Step 5: Separate Query - Post Insights (Impressions / Reach)
+        // If insights are unavailable or not yet generated, views is null without failing basic engagement
+        Long views = fetchPostInsights(platformPostId, pageAccessToken);
+
+        log.info("[Facebook] Final metrics for post {} -> likes={}, comments={}, shares={}, views={}",
+                platformPostId, likes, comments, shares, views);
+
+        return MetricsResult.available(likes, comments, shares, views);
     }
 
-    @SuppressWarnings("unchecked")
-    private MetricsResult fetchBaseEngagementOnly(String platformPostId, String pageAccessToken) {
+    private EngagementResult fetchPostEngagement(String platformPostId, String pageAccessToken) {
+        String endpoint = GRAPH_API_BASE + "/" + platformPostId + "?fields=shares,comments.summary(true),reactions.summary(true)&access_token=" + pageAccessToken;
+        log.info("[Facebook] Fetching engagement: GET {}/{}?fields=shares,comments.summary(true),reactions.summary(true)", GRAPH_API_BASE, platformPostId);
+
         try {
-            String fields = "shares,comments.summary(true),reactions.summary(true)";
-            Map<String, Object> response = restClient.get()
-                    .uri(GRAPH_API_BASE + "/" + platformPostId + "?fields=" + fields + "&access_token=" + pageAccessToken)
+            String responseBody = restClient.get()
+                    .uri(endpoint)
                     .retrieve()
-                    .body(Map.class);
+                    .body(String.class);
 
-            Long likes = 0L;
-            Long comments = 0L;
-            Long shares = 0L;
+            Map<String, Object> response = parseMetaJson(responseBody);
 
-            if (response != null) {
+            if (response != null && !response.isEmpty()) {
+                if (response.containsKey("error")) {
+                    MetaErrorInfo err = extractMetaErrorInfo(response.get("error"));
+                    log.warn("[Facebook] Meta error on engagement query: message='{}', type='{}', code={}, error_subcode={}",
+                            err.message(), err.type(), err.code(), err.errorSubcode());
+                    return handleEngagementError(err, platformPostId, pageAccessToken);
+                }
+
+                Long likes = 0L;
+                Long comments = 0L;
+                Long shares = 0L;
+
                 if (response.get("reactions") instanceof Map<?, ?> reactionsMap && reactionsMap.get("summary") instanceof Map<?, ?> summaryMap) {
                     likes = extractCount(summaryMap.get("total_count"));
                 }
@@ -333,10 +324,215 @@ public class FacebookPublisher implements SocialMediaPublisher {
                 if (response.get("shares") instanceof Map<?, ?> sharesMap) {
                     shares = extractCount(sharesMap.get("count"));
                 }
-                return MetricsResult.available(likes, comments, shares, null);
+
+                return new EngagementResult(true, likes, comments, shares, false, null);
             }
+
+            return new EngagementResult(true, 0L, 0L, 0L, false, null);
+
+        } catch (HttpClientErrorException e) {
+            String errBody = e.getResponseBodyAsString();
+            MetaErrorInfo err = extractMetaErrorInfo(parseMetaJson(errBody).get("error"));
+            log.warn("[Facebook] HTTP {} on engagement query GET {}/{}?fields=shares,comments.summary(true),reactions.summary(true): message='{}', type='{}', code={}, error_subcode={}",
+                    e.getStatusCode().value(), GRAPH_API_BASE, platformPostId, err.message(), err.type(), err.code(), err.errorSubcode());
+
+            return handleEngagementError(err, platformPostId, pageAccessToken);
+        } catch (Exception e) {
+            log.warn("[Facebook] Unexpected error on engagement query for {}: {}", platformPostId, e.getMessage());
+            return new EngagementResult(false, 0L, 0L, 0L, false, "Failed to fetch Facebook engagement: " + e.getMessage());
+        }
+    }
+
+    private EngagementResult handleEngagementError(MetaErrorInfo err, String platformPostId, String pageAccessToken) {
+        // If shares field was unsupported on this node type (code 100), retry with reactions and comments only
+        if (err.code() == 100) {
+            log.info("[Facebook] Field mismatch on post {}. Retrying with comments.summary(true),reactions.summary(true)...", platformPostId);
+            return fetchReactionsAndCommentsOnly(platformPostId, pageAccessToken);
+        }
+
+        // Token expired / invalidated
+        if (err.code() == 190 || ("OAuthException".equals(err.type()) && err.message() != null && err.message().contains("Session has expired"))) {
+            return new EngagementResult(false, 0L, 0L, 0L, true, "Facebook Page token expired: " + err.message());
+        }
+
+        // Permission required (explicit OAuth permission denial)
+        if (err.code() == 200 || err.code() == 10 || (err.message() != null && (err.message().contains("pages_read_engagement") || err.message().contains("Permissions")))) {
+            return new EngagementResult(false, 0L, 0L, 0L, true, "Facebook permission required: " + err.message());
+        }
+
+        // Other API errors (do NOT treat as permission required)
+        return new EngagementResult(false, 0L, 0L, 0L, false, "Facebook API error (code " + err.code() + "): " + err.message());
+    }
+
+    private EngagementResult fetchReactionsAndCommentsOnly(String platformPostId, String pageAccessToken) {
+        String endpoint = GRAPH_API_BASE + "/" + platformPostId + "?fields=comments.summary(true),reactions.summary(true)&access_token=" + pageAccessToken;
+        log.info("[Facebook] Fetching reactions & comments: GET {}/{}?fields=comments.summary(true),reactions.summary(true)", GRAPH_API_BASE, platformPostId);
+
+        try {
+            String responseBody = restClient.get()
+                    .uri(endpoint)
+                    .retrieve()
+                    .body(String.class);
+
+            Map<String, Object> response = parseMetaJson(responseBody);
+
+            if (response != null && !response.isEmpty() && !response.containsKey("error")) {
+                Long likes = 0L;
+                Long comments = 0L;
+
+                if (response.get("reactions") instanceof Map<?, ?> reactionsMap && reactionsMap.get("summary") instanceof Map<?, ?> summaryMap) {
+                    likes = extractCount(summaryMap.get("total_count"));
+                }
+                if (response.get("comments") instanceof Map<?, ?> commentsMap && commentsMap.get("summary") instanceof Map<?, ?> summaryMap) {
+                    comments = extractCount(summaryMap.get("total_count"));
+                }
+
+                return new EngagementResult(true, likes, comments, 0L, false, null);
+            }
+        } catch (Exception e) {
+            log.warn("[Facebook] Retry with reactions & comments failed for {}: {}", platformPostId, e.getMessage());
+        }
+
+        return new EngagementResult(true, 0L, 0L, 0L, false, null);
+    }
+
+    private Long fetchPostInsights(String platformPostId, String pageAccessToken) {
+        String endpoint = GRAPH_API_BASE + "/" + platformPostId + "/insights?metric=post_impressions,post_engaged_users&access_token=" + pageAccessToken;
+        log.info("[Facebook] Fetching insights: GET {}/{}/insights?metric=post_impressions,post_engaged_users", GRAPH_API_BASE, platformPostId);
+
+        try {
+            String responseBody = restClient.get()
+                    .uri(endpoint)
+                    .retrieve()
+                    .body(String.class);
+
+            Map<String, Object> response = parseMetaJson(responseBody);
+
+            if (response != null && response.get("data") instanceof List<?> dataList) {
+                for (Object item : dataList) {
+                    if (item instanceof Map<?, ?> metricItem) {
+                        String name = (String) metricItem.get("name");
+                        if ("post_impressions".equals(name) && metricItem.get("values") instanceof List<?> valuesList && !valuesList.isEmpty()) {
+                            if (valuesList.get(0) instanceof Map<?, ?> valueMap) {
+                                return extractCount(valueMap.get("value"));
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (HttpClientErrorException e) {
+            MetaErrorInfo err = extractMetaErrorInfo(parseMetaJson(e.getResponseBodyAsString()).get("error"));
+            log.info("[Facebook] Insights unavailable for post {} (code {}): {}. Proceeding without impressions.", platformPostId, err.code(), err.message());
+        } catch (Exception e) {
+            log.info("[Facebook] Insights fetch error for post {}: {}. Proceeding without impressions.", platformPostId, e.getMessage());
+        }
+
+        return null;
+    }
+
+    private void logFacebookDiagnostics(String pageAccessToken, String pageId, String platformPostId) {
+        try {
+            // Step 1: Inspect permissions via /me/permissions
+            String permUri = GRAPH_API_BASE + "/me/permissions?access_token=" + pageAccessToken;
+            try {
+                String permBody = restClient.get().uri(permUri).retrieve().body(String.class);
+                Map<String, Object> permJson = parseMetaJson(permBody);
+                if (permJson != null && permJson.get("data") instanceof List<?> dataList) {
+                    Map<String, String> perms = new LinkedHashMap<>();
+                    for (Object item : dataList) {
+                        if (item instanceof Map<?, ?> map) {
+                            Object perm = map.get("permission");
+                            Object status = map.get("status");
+                            if (perm != null && status != null) {
+                                perms.put(String.valueOf(perm), String.valueOf(status));
+                            }
+                        }
+                    }
+                    log.info("[Facebook Diagnostics Step 1] Scopes: pages_read_engagement={}, read_insights={}, pages_show_list={}, pages_manage_posts={}",
+                            perms.getOrDefault("pages_read_engagement", "unknown"),
+                            perms.getOrDefault("read_insights", "unknown"),
+                            perms.getOrDefault("pages_show_list", "unknown"),
+                            perms.getOrDefault("pages_manage_posts", "unknown"));
+                }
+            } catch (Exception e) {
+                log.info("[Facebook Diagnostics Step 1] /me/permissions note: {}", e.getMessage());
+            }
+
+            // Step 2: Inspect Token Type via /me
+            String meUri = GRAPH_API_BASE + "/me?fields=id,name,category&access_token=" + pageAccessToken;
+            try {
+                String meBody = restClient.get().uri(meUri).retrieve().body(String.class);
+                Map<String, Object> meJson = parseMetaJson(meBody);
+                if (meJson != null) {
+                    Object targetId = meJson.get("id");
+                    Object category = meJson.get("category");
+                    String tokenType = (category != null || (targetId != null && String.valueOf(targetId).equals(pageId))) ? "PAGE" : "USER";
+                    log.info("[Facebook Diagnostics Step 2] tokenType={}, targetId={}, expectedPageId={}, platformPostId={}",
+                            tokenType, targetId, pageId, platformPostId);
+                }
+            } catch (Exception e) {
+                log.info("[Facebook Diagnostics Step 2] Token inspection note: {}", e.getMessage());
+            }
+
         } catch (Exception ignored) {}
-        return MetricsResult.available(0L, 0L, 0L, null);
+    }
+
+    private MetaErrorInfo extractMetaErrorInfo(Object errorObj) {
+        if (errorObj instanceof Map<?, ?> errMap) {
+            String message = errMap.get("message") != null ? String.valueOf(errMap.get("message")) : "Unknown error";
+            String type = errMap.get("type") != null ? String.valueOf(errMap.get("type")) : "Unknown";
+            int code = errMap.get("code") instanceof Number n ? n.intValue() : 0;
+            int subcode = errMap.get("error_subcode") instanceof Number n ? n.intValue() : 0;
+            return new MetaErrorInfo(message, type, code, subcode);
+        }
+        return new MetaErrorInfo("No error details available", "Unknown", 0, 0);
+    }
+
+    private Map<String, Object> parseMetaJson(String body) {
+        if (body == null || body.isBlank()) {
+            return Collections.emptyMap();
+        }
+        try {
+            Map<String, Object> map = objectMapper.readValue(body, new TypeReference<Map<String, Object>>() {});
+            return map != null ? map : Collections.emptyMap();
+        } catch (Exception e) {
+            log.warn("[Facebook] Failed to parse Meta JSON response: {}", e.getMessage());
+            return Collections.emptyMap();
+        }
+    }
+
+    private String formatMetaError(Object errorObj) {
+        if (errorObj instanceof Map<?, ?> errMap) {
+            Object msg = errMap.get("message");
+            Object type = errMap.get("type");
+            Object code = errMap.get("code");
+            Object subcode = errMap.get("error_subcode");
+
+            StringBuilder sb = new StringBuilder();
+            if (type != null) {
+                sb.append("[").append(type).append("] ");
+            }
+            if (msg != null) {
+                sb.append(msg);
+            } else {
+                sb.append("Unknown Facebook API error");
+            }
+            if (code != null) {
+                sb.append(" (code: ").append(code).append(")");
+            }
+            if (subcode != null) {
+                sb.append(" (subcode: ").append(subcode).append(")");
+            }
+
+            String sanitized = sb.toString();
+            if (sanitized.contains("OAuthException") || "190".equals(String.valueOf(code))) {
+                return "FACEBOOK_TOKEN_INVALID: " + sanitized;
+            } else if ("200".equals(String.valueOf(code)) || sanitized.contains("Permissions") || sanitized.contains("permission")) {
+                return "FACEBOOK_PERMISSION_REQUIRED: " + sanitized;
+            }
+            return "FACEBOOK_API_ERROR: " + sanitized;
+        }
+        return "Facebook API error: " + String.valueOf(errorObj);
     }
 
     private Long extractCount(Object val) {
@@ -367,19 +563,9 @@ public class FacebookPublisher implements SocialMediaPublisher {
             return "HTTP " + statusCode + " error from Meta Graph API";
         }
         try {
-            // Extract message and code without logging sensitive fields
-            if (errorBody.contains("\"message\":")) {
-                int start = errorBody.indexOf("\"message\":\"") + 11;
-                int end = errorBody.indexOf("\"", start);
-                if (start > 10 && end > start) {
-                    String msg = errorBody.substring(start, end);
-                    if (errorBody.contains("OAuthException") || errorBody.contains("190")) {
-                        return "FACEBOOK_TOKEN_INVALID: " + msg;
-                    } else if (errorBody.contains("(#200)") || errorBody.contains("Permissions")) {
-                        return "FACEBOOK_PERMISSION_REQUIRED: " + msg;
-                    }
-                    return "FACEBOOK_API_ERROR: " + msg;
-                }
+            Map<String, Object> parsed = parseMetaJson(errorBody);
+            if (parsed != null && parsed.containsKey("error")) {
+                return formatMetaError(parsed.get("error"));
             }
         } catch (Exception ignored) {}
         return "Facebook API error (HTTP " + statusCode + ")";

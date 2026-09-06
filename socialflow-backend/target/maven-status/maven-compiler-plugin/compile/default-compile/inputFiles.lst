@@ -33,6 +33,7 @@
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/security/JwtAuthenticationFilter.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/service/impl/UserServiceImpl.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/service/impl/BranchServiceImpl.java
+/mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/dto/PostMetricsDto.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/security/CustomUserDetailsService.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/controller/EmailCampaignController.java
 /mnt/c/Users/yoges/Projects/social-ai/socialflow-backend/src/main/java/com/socialflow/entity/Branch.java

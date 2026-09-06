@@ -1,5 +1,6 @@
 package com.socialflow.service;
 
+import com.socialflow.dto.PostMetricsDto;
 import com.socialflow.dto.PostRequest;
 import com.socialflow.dto.PostResponse;
 import com.socialflow.entity.PostStatus;
@@ -18,4 +19,5 @@ public interface PostService {
     PostResponse cancelPost(Long id, String currentUserEmail, boolean isAdmin);
     PostResponse publishPost(Long id, String currentUserEmail, boolean isAdmin);
     PostResponse refreshMetrics(Long id, String currentUserEmail, boolean isAdmin);
+    PostMetricsDto getMetricsDto(Long id, String currentUserEmail, boolean isAdmin);
 }

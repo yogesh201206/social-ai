@@ -41,9 +41,7 @@ public class SocialMediaPublisherFactory {
             case YOUTUBE  -> youTubePublisher;
             case LINKEDIN -> linkedInPublisher;
             case FACEBOOK -> facebookPublisher;
-            case INSTAGRAM -> throw new BadRequestException(
-                    "Instagram integration is coming soon. Social account publishing has not been enabled yet. " +
-                    "Please check back after Meta Business verification is complete.");
+            case INSTAGRAM -> instagramPublisher;
         };
     }
 }

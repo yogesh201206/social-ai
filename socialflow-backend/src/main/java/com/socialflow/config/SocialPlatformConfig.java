@@ -27,15 +27,20 @@ import org.springframework.web.client.RestClient;
 public class SocialPlatformConfig {
 
     /**
-     * Shared RestClient bean used for all external API calls.
+     * Shared RestClient bean used for all external API calls with sensible connect/read timeouts.
      */
     @Bean
     public RestClient restClient() {
-        return RestClient.builder().build();
+        org.springframework.http.client.SimpleClientHttpRequestFactory requestFactory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(java.time.Duration.ofSeconds(10));
+        requestFactory.setReadTimeout(java.time.Duration.ofSeconds(30));
+        return RestClient.builder()
+                .requestFactory(requestFactory)
+                .build();
     }
 
     /**
-     * Meta (Facebook ACTIVE, Instagram NEXT).
+     * Meta / Facebook Pages — Active.
      * Set META_APP_ID, META_APP_SECRET, and META_REDIRECT_URI environment variables.
      */
     @Configuration
@@ -45,6 +50,20 @@ public class SocialPlatformConfig {
     public static class MetaConfig {
         private String appId;
         private String appSecret;
+        private String redirectUri;
+    }
+
+    /**
+     * Instagram (Business Login) — Active.
+     * Set INSTAGRAM_CLIENT_ID, INSTAGRAM_CLIENT_SECRET, and INSTAGRAM_REDIRECT_URI environment variables.
+     */
+    @Configuration
+    @ConfigurationProperties(prefix = "instagram")
+    @Getter
+    @Setter
+    public static class InstagramConfig {
+        private String clientId;
+        private String clientSecret;
         private String redirectUri;
     }
 

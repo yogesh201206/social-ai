@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.socialflow.entity.Post;
 import com.socialflow.entity.SocialAccount;
+import com.socialflow.service.MediaStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -15,6 +16,7 @@ import org.springframework.web.client.RestClient;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Paths;
 import java.util.*;
 
 /**
@@ -33,6 +35,7 @@ public class LinkedInPublisher implements SocialMediaPublisher {
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final MediaStorageService mediaStorageService;
 
     @Override
     public PublishResult publish(Post post, SocialAccount account) {
@@ -54,8 +57,12 @@ public class LinkedInPublisher implements SocialMediaPublisher {
         // Ensure URN is in correct format: urn:li:person:{id}
         String authorUrn = personUrn.startsWith("urn:li:") ? personUrn : "urn:li:person:" + personUrn;
 
-        // If post has an image, use the 3-step LinkedIn Image upload flow
-        if (post.getImageUrl() != null && !post.getImageUrl().isBlank()) {
+        // If post has an image (either local mediaPath or imageUrl), use the 3-step LinkedIn Image upload flow
+        String mediaPath = post.getMediaPath();
+        String imageUrl = post.getImageUrl();
+        boolean hasImage = (mediaPath != null && !mediaPath.isBlank()) || (imageUrl != null && !imageUrl.isBlank());
+
+        if (hasImage) {
             return publishWithImage(post, account, authorUrn, accessToken);
         }
 
@@ -113,10 +120,13 @@ public class LinkedInPublisher implements SocialMediaPublisher {
 
     private PublishResult publishWithImage(Post post, SocialAccount account, String authorUrn, String accessToken) {
         try {
-            byte[] imageBytes = fetchMediaBytes(post.getImageUrl());
-            if (imageBytes == null || imageBytes.length == 0) {
-                return PublishResult.failure("Could not read image content for LinkedIn upload. Please verify image URL or format.");
+            LoadedImage image = loadLinkedInMedia(post.getMediaPath(), post.getImageUrl());
+            if (image == null || image.bytes() == null || image.bytes().length == 0) {
+                return PublishResult.failure("LINKEDIN_MEDIA_READ_FAILED");
             }
+
+            byte[] imageBytes = image.bytes();
+            String contentType = image.mimeType();
 
             // Step 1: Register upload with LinkedIn Assets API
             Map<String, Object> registerRequest = Map.of(
@@ -156,7 +166,6 @@ public class LinkedInPublisher implements SocialMediaPublisher {
             }
 
             // Step 2: Upload image binary to the returned upload URL
-            String contentType = detectImageContentType(post.getImageUrl());
             restClient.put()
                     .uri(uploadUrl)
                     .header("Authorization", "Bearer " + accessToken)
@@ -400,36 +409,137 @@ public class LinkedInPublisher implements SocialMediaPublisher {
         }
     }
 
-    private byte[] fetchMediaBytes(String mediaUrl) {
-        if (mediaUrl == null || mediaUrl.isBlank()) return null;
-        try {
-            if (mediaUrl.startsWith("data:")) {
-                int commaIndex = mediaUrl.indexOf(",");
-                if (commaIndex != -1) {
-                    String base64Data = mediaUrl.substring(commaIndex + 1);
-                    return Base64.getDecoder().decode(base64Data.trim());
+    private record LoadedImage(byte[] bytes, String mimeType, String filename, String sourceType) {}
+
+    private LoadedImage loadLinkedInMedia(String mediaPath, String imageUrl) {
+        byte[] bytes = null;
+        String sourceType = null;
+        String filename = null;
+        String detectedMime = null;
+
+        // 1. First try MediaStorageService with mediaPath
+        if (mediaPath != null && !mediaPath.isBlank()) {
+            try {
+                bytes = mediaStorageService.loadMediaBytes(mediaPath);
+                if (bytes != null && bytes.length > 0) {
+                    sourceType = "LOCAL";
+                    filename = extractFileName(mediaPath);
                 }
+            } catch (Exception e) {
+                log.debug("[LinkedIn] Could not load media from mediaPath {}: {}", mediaPath, e.getMessage());
             }
-            if (mediaUrl.startsWith("http://") || mediaUrl.startsWith("https://")) {
-                return restClient.get()
-                        .uri(mediaUrl)
-                        .retrieve()
-                        .body(byte[].class);
-            }
-        } catch (Exception e) {
-            log.warn("[LinkedIn] Failed to fetch image bytes from {}: {}", mediaUrl, e.getMessage());
         }
-        return null;
+
+        // 2. Next try MediaStorageService with imageUrl (supports /api/media/files/..., local paths, and data: URIs)
+        if ((bytes == null || bytes.length == 0) && imageUrl != null && !imageUrl.isBlank()) {
+            try {
+                bytes = mediaStorageService.loadMediaBytes(imageUrl);
+                if (bytes != null && bytes.length > 0) {
+                    sourceType = imageUrl.startsWith("data:") ? "DATA_URI" : "LOCAL";
+                    filename = extractFileName(imageUrl);
+                }
+            } catch (Exception e) {
+                log.debug("[LinkedIn] Could not load media from imageUrl via storage: {}", e.getMessage());
+            }
+        }
+
+        // 3. Else if public http/https URL, download image bytes
+        if ((bytes == null || bytes.length == 0) && imageUrl != null && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
+            try {
+                ResponseEntity<byte[]> response = restClient.get()
+                        .uri(imageUrl)
+                        .retrieve()
+                        .toEntity(byte[].class);
+                if (response.getBody() != null && response.getBody().length > 0) {
+                    bytes = response.getBody();
+                    sourceType = "PUBLIC";
+                    filename = extractFileName(imageUrl);
+                    MediaType ct = response.getHeaders().getContentType();
+                    if (ct != null) {
+                        detectedMime = ct.toString();
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[LinkedIn] Failed to download remote media from {}: {}", imageUrl, e.getMessage());
+            }
+        }
+
+        if (bytes == null || bytes.length == 0) {
+            log.warn("[LinkedIn] Media load failed: no bytes found for mediaPath={} or imageUrl={}", mediaPath, imageUrl);
+            return null;
+        }
+
+        if (filename == null || filename.isBlank()) {
+            filename = "upload.jpg";
+        }
+
+        // Determine MIME type
+        String mimeType = resolveMimeType(bytes, filename, detectedMime);
+
+        // Validate supported MIME type: support at least image/jpeg and image/png
+        if (!isSupportedLinkedInMimeType(mimeType)) {
+            log.warn("[LinkedIn] Unsupported MIME type '{}' for file '{}'", mimeType, filename);
+            return null;
+        }
+
+        // Safe log (Never log tokens!)
+        log.info("[LinkedIn] Media loaded successfully: sourceType={}, byteLength={}, mimeType={}, filename={}",
+                sourceType, bytes.length, mimeType, filename);
+
+        return new LoadedImage(bytes, mimeType, filename, sourceType);
     }
 
-    private String detectImageContentType(String mediaUrl) {
-        if (mediaUrl != null) {
-            String lower = mediaUrl.toLowerCase();
-            if (lower.contains("png")) return "image/png";
-            if (lower.contains("gif")) return "image/gif";
-            if (lower.contains("webp")) return "image/webp";
+    private String resolveMimeType(byte[] bytes, String filename, String remoteMime) {
+        if (remoteMime != null && !remoteMime.isBlank() && !remoteMime.contains("application/octet-stream")) {
+            String cleanRemote = remoteMime.toLowerCase().split(";")[0].trim();
+            if (isSupportedLinkedInMimeType(cleanRemote)) {
+                return cleanRemote;
+            }
         }
+
+        if (filename != null) {
+            String lower = filename.toLowerCase();
+            if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+            if (lower.endsWith(".png")) return "image/png";
+            if (lower.endsWith(".gif")) return "image/gif";
+            if (lower.endsWith(".webp")) return "image/webp";
+        }
+
+        // Binary sniffing
+        if (bytes != null && bytes.length >= 4) {
+            if ((bytes[0] & 0xFF) == 0xFF && (bytes[1] & 0xFF) == 0xD8 && (bytes[2] & 0xFF) == 0xFF) {
+                return "image/jpeg";
+            }
+            if ((bytes[0] & 0xFF) == 0x89 && (bytes[1] & 0xFF) == 0x50 && (bytes[2] & 0xFF) == 0x4E && (bytes[3] & 0xFF) == 0x47) {
+                return "image/png";
+            }
+            if (bytes[0] == 'G' && bytes[1] == 'I' && bytes[2] == 'F') {
+                return "image/gif";
+            }
+        }
+
         return "image/jpeg";
+    }
+
+    private boolean isSupportedLinkedInMimeType(String mime) {
+        if (mime == null) return false;
+        String m = mime.toLowerCase();
+        return m.equals("image/jpeg") || m.equals("image/jpg") || m.equals("image/png") || m.equals("image/gif");
+    }
+
+    private String extractFileName(String pathOrUrl) {
+        if (pathOrUrl == null || pathOrUrl.isBlank()) return "upload.jpg";
+        try {
+            String clean = pathOrUrl.replace("\\", "/");
+            if (clean.contains("?")) clean = clean.substring(0, clean.indexOf("?"));
+            int lastSlash = clean.lastIndexOf('/');
+            if (lastSlash != -1 && lastSlash < clean.length() - 1) {
+                return clean.substring(lastSlash + 1);
+            }
+            return Paths.get(clean).getFileName().toString();
+        } catch (Exception e) {
+            return "upload.jpg";
+        }
     }
 
     private PublishResult handleLinkedInHttpError(int status, String responseBody) {

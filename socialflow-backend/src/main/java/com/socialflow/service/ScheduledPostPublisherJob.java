@@ -123,10 +123,11 @@ public class ScheduledPostPublisherJob {
                 }
                 post.setFailureReason(null);
 
-                // Clean up scheduled local media file after successful publish
+                // Move media file to permanent published storage so imageUrl keeps resolving.
+                // The file is NOT deleted — it is relocated from scheduled → uploads/published/.
                 if (post.getMediaPath() != null && !post.getMediaPath().isBlank()) {
-                    mediaStorageService.deleteMediaFile(post.getMediaPath());
-                    post.setMediaPath(null);
+                    String publishedPath = mediaStorageService.promoteToPublished(post.getMediaPath());
+                    post.setMediaPath(publishedPath);
                 }
 
                 postRepository.save(post);

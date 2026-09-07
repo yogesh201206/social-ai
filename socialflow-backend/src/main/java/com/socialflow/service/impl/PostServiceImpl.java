@@ -490,10 +490,11 @@ public class PostServiceImpl implements PostService {
             }
             post.setFailureReason(null);
 
-            // Clean up temporary/scheduled local video file after successful publish
+            // Move media file to permanent published storage so imageUrl keeps resolving.
+            // The file is NOT deleted — it is relocated from temp/scheduled → uploads/published/.
             if (post.getMediaPath() != null && !post.getMediaPath().isBlank()) {
-                mediaStorageService.deleteMediaFile(post.getMediaPath());
-                post.setMediaPath(null);
+                String publishedPath = mediaStorageService.promoteToPublished(post.getMediaPath());
+                post.setMediaPath(publishedPath);
             }
 
             log.info("[Publish] Post id={} published to {} — platformPostId={}",

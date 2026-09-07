@@ -229,7 +229,7 @@ export default function SettingsPanel() {
           <div className="animate-fade-in">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Connected Social Accounts</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
-              Connect your restaurant&apos;s Facebook Page, LinkedIn, or YouTube account to publish posts directly from SocialFlow AI.
+              Connect your restaurant&apos;s Instagram, Facebook Page, LinkedIn, or YouTube account to publish posts directly from SocialFlow AI.
             </p>
 
             {/* Restaurant selector */}
@@ -266,6 +266,7 @@ export default function SettingsPanel() {
               <div className="space-y-3">
                 {/* Active platforms — Real OAuth connection */}
                 {[
+                  { p: 'INSTAGRAM', label: 'Instagram', color: 'from-pink-500 via-purple-500 to-indigo-500' },
                   { p: 'FACEBOOK', label: 'Facebook', color: 'from-blue-600 to-blue-700' },
                   { p: 'LINKEDIN', label: 'LinkedIn', color: 'from-blue-500 to-blue-700' },
                   { p: 'YOUTUBE', label: 'YouTube', color: 'from-red-600 to-red-700' },
@@ -321,35 +322,6 @@ export default function SettingsPanel() {
                     </div>
                   )
                 })}
-
-                {/* Coming Soon platform — Instagram (Next in line) */}
-                {[
-                  { p: 'INSTAGRAM', label: 'Instagram', color: 'from-pink-500 to-purple-500' },
-                ].map(({ p, label, color }) => (
-                  <div key={p} className="flex items-center justify-between p-4 rounded-xl border border-gray-100 dark:border-gray-700/60 bg-gray-50/60 dark:bg-gray-800/30">
-                    <div className="flex items-center gap-3">
-                      <div className={`h-9 w-9 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center opacity-60`}>
-                        <Link2 className="h-4 w-4 text-white" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</p>
-                          <span className="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-200 dark:border-amber-700/50">
-                            Coming Soon
-                          </span>
-                        </div>
-                        <p className="text-xs text-gray-400">Integration not enabled yet</p>
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      disabled
-                      className="opacity-40 cursor-not-allowed pointer-events-none"
-                    >
-                      Connect
-                    </Button>
-                  </div>
-                ))}
               </div>
             )}
 

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Calendar, Clock, Pencil, XCircle } from 'lucide-react'
 import * as Icons from 'lucide-react'
 import StatusBadge from './StatusBadge'
+import PostMediaPreview from './PostMediaPreview'
 import { platformIcons, platformColors } from '../data/postsData'
 
 export default function ScheduleCard({ post, onCancel }) {
@@ -11,13 +12,13 @@ export default function ScheduleCard({ post, onCancel }) {
   return (
     <article className="glass rounded-2xl overflow-hidden hover:shadow-lg hover:shadow-brand-500/10 transition-all duration-300 hover:-translate-y-0.5">
       <div className="flex flex-col sm:flex-row">
-        <div className="relative sm:w-48 flex-shrink-0">
-          <img
-            src={post.image}
+        <div className="relative sm:w-48 flex-shrink-0 bg-gray-100 dark:bg-gray-800">
+          <PostMediaPreview
+            post={post}
             alt={post.title}
             className="w-full h-32 sm:h-full object-cover"
           />
-          <div className={`absolute top-3 left-3 h-8 w-8 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center shadow-lg`}>
+          <div className={`absolute top-3 left-3 h-8 w-8 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center shadow-lg z-10 pointer-events-none`}>
             <PlatformIcon className="h-4 w-4 text-white" />
           </div>
         </div>

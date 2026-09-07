@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 import { Upload, X, ImageIcon, AlertCircle, FileImage } from 'lucide-react'
+import postService from '../services/postService'
 
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const ACCEPTED_EXTENSIONS = '.jpg,.jpeg,.png,.webp'
@@ -28,36 +29,59 @@ export default function UploadBox({ value, onChange, className = '' }) {
     return null
   }
 
-  const simulateUpload = useCallback((file) => {
-    setUploadProgress(0)
-    const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval)
-          setTimeout(() => setUploadProgress(null), 400)
-          return 100
-        }
-        return prev + 12
-      })
-    }, 80)
-
-    const reader = new FileReader()
-    reader.onload = (e) => onChange?.({ file, preview: e.target.result })
-    reader.onerror = () => setError('Failed to read file. Please try again.')
-    reader.readAsDataURL(file)
-  }, [onChange])
-
   const handleFile = useCallback(
-    (file) => {
+    async (file) => {
       setError(null)
       const validationError = validateFile(file)
       if (validationError) {
         setError(validationError)
         return
       }
-      simulateUpload(file)
+
+      const localPreview = URL.createObjectURL(file)
+      setUploadProgress(30)
+
+      try {
+        onChange?.({
+          file,
+          preview: localPreview,
+          fileName: file.name,
+          size: file.size,
+        })
+
+        setUploadProgress(60)
+        const res = await postService.uploadMedia(file, 'temp', 'instagram')
+        setUploadProgress(100)
+
+        onChange?.({
+          file,
+          preview: localPreview,
+          mediaUrl: res.url,
+          mediaPath: res.mediaPath,
+          mediaType: res.contentType || file.type || 'image/jpeg',
+          fileName: res.fileName || file.name,
+          originalFileName: res.originalFileName || file.name,
+          size: res.size || file.size,
+        })
+        setTimeout(() => setUploadProgress(null), 400)
+      } catch (err) {
+        console.warn('Backend image upload fallback to local preview:', err.message)
+        const reader = new FileReader()
+        reader.onload = (e) =>
+          onChange?.({
+            file,
+            preview: e.target.result,
+            mediaUrl: e.target.result,
+            mediaPath: null,
+            mediaType: file.type || 'image/jpeg',
+            fileName: file.name,
+            size: file.size,
+          })
+        reader.readAsDataURL(file)
+        setTimeout(() => setUploadProgress(null), 400)
+      }
     },
-    [simulateUpload]
+    [onChange]
   )
 
   const handleDrop = useCallback(

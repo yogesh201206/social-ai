@@ -7,6 +7,7 @@ import com.socialflow.entity.SocialAccount;
 import com.socialflow.service.MediaStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -15,6 +16,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
+import java.net.URI;
 import java.util.*;
 
 /**
@@ -32,6 +34,9 @@ public class FacebookPublisher implements SocialMediaPublisher {
     private final RestClient restClient;
     private final MediaStorageService mediaStorageService;
     private final ObjectMapper objectMapper;
+
+    @Value("${app.public-base-url:}")
+    private String publicBaseUrl;
 
     public record MetaErrorInfo(String message, String type, int code, int errorSubcode) {}
     private record EngagementResult(boolean success, Long likes, Long comments, Long shares, boolean isPermissionError, String errorMessage) {}
@@ -168,15 +173,32 @@ public class FacebookPublisher implements SocialMediaPublisher {
             }
             return PublishResult.failure("Facebook API returned empty ID for photo upload.");
         } else if (imageUrl != null && !imageUrl.isBlank()) {
-            // Public URL photo post
+            // Public URL photo post — Meta requires a publicly reachable HTTPS URL
+            String publicMediaUrl;
+            try {
+                publicMediaUrl = resolvePublicMediaUrl(mediaPath, imageUrl);
+            } catch (IllegalArgumentException ex) {
+                log.warn("[Facebook] Cannot resolve public media URL: {}", ex.getMessage());
+                return PublishResult.failure("Facebook image publishing failed: " + ex.getMessage());
+            }
+
+            // Safe diagnostic log — host only, never the token
+            try {
+                URI uri = URI.create(publicMediaUrl);
+                log.info("[Facebook] Resolved public media URL: scheme={}, host={}, path={}",
+                        uri.getScheme(), uri.getHost(), uri.getPath());
+            } catch (Exception ignore) {
+                log.info("[Facebook] Resolved public media URL (could not parse for logging)");
+            }
+
             MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-            body.add("url", imageUrl);
+            body.add("url", publicMediaUrl);
             if (caption != null && !caption.isBlank()) {
                 body.add("caption", caption);
             }
             body.add("access_token", pageAccessToken);
 
-            log.info("[Facebook] Publishing photo via URL to Page {}", pageId);
+            log.info("[Facebook] Publishing photo via public HTTPS URL to Page {}", pageId);
 
             String responseBody = restClient.post()
                     .uri(GRAPH_API_BASE + "/" + pageId + "/photos")
@@ -525,14 +547,86 @@ public class FacebookPublisher implements SocialMediaPublisher {
             }
 
             String sanitized = sb.toString();
-            if (sanitized.contains("OAuthException") || "190".equals(String.valueOf(code))) {
+            String codeStr = String.valueOf(code);
+            String typeStr = String.valueOf(type);
+            // Token-invalid: ONLY real OAuth token errors (code 190) or explicit OAuthException
+            // Do NOT classify code-100 URL errors ("url should represent a valid URL") as token-invalid
+            boolean isTokenError = "190".equals(codeStr)
+                    || ("OAuthException".equals(typeStr)
+                        && (subcode != null && ("460".equals(String.valueOf(subcode))
+                            || "467".equals(String.valueOf(subcode))
+                            || "463".equals(String.valueOf(subcode)))));
+            if (isTokenError) {
                 return "FACEBOOK_TOKEN_INVALID: " + sanitized;
-            } else if ("200".equals(String.valueOf(code)) || sanitized.contains("Permissions") || sanitized.contains("permission")) {
+            } else if ("200".equals(codeStr) || "10".equals(codeStr)
+                    || sanitized.contains("Permissions") || sanitized.contains("permission")) {
                 return "FACEBOOK_PERMISSION_REQUIRED: " + sanitized;
             }
             return "FACEBOOK_API_ERROR: " + sanitized;
         }
         return "Facebook API error: " + String.valueOf(errorObj);
+    }
+
+    /**
+     * Converts any media path or image URL into a publicly reachable HTTPS URL suitable
+     * for Meta's Graph API. Meta's servers cannot reach localhost, 127.0.0.1, WSL paths,
+     * or relative URLs.
+     *
+     * @param mediaPath stored relative media path (may be null)
+     * @param imageUrl  raw image URL from the post (may be null)
+     * @return absolute HTTPS URL reachable by Meta's CDN
+     * @throws IllegalArgumentException if the URL cannot be resolved to a public HTTPS URL
+     */
+    private String resolvePublicMediaUrl(String mediaPath, String imageUrl) {
+        // Case 1: imageUrl is already an external public HTTPS URL (e.g. Unsplash, S3, CDN)
+        if (imageUrl != null && imageUrl.startsWith("https://")
+                && !imageUrl.contains("localhost")
+                && !imageUrl.contains("127.0.0.1")
+                && !imageUrl.contains("10.0.2.2")) {
+            return imageUrl;
+        }
+
+        // Case 2: extract filename from mediaPath or API-relative imageUrl, prepend PUBLIC_BASE_URL
+        String fileName = null;
+        if (mediaPath != null && !mediaPath.isBlank()) {
+            fileName = extractMediaFileName(mediaPath);
+        } else if (imageUrl != null && (imageUrl.contains("/api/media/") || imageUrl.contains("/uploads/"))) {
+            fileName = extractMediaFileName(imageUrl);
+        }
+
+        if (fileName != null && !fileName.isBlank()) {
+            String base = (publicBaseUrl != null) ? publicBaseUrl.trim().replaceAll("/+$", "") : "";
+            if (base.isBlank()) {
+                throw new IllegalArgumentException(
+                        "PUBLIC_BASE_URL is not configured. Facebook requires a publicly accessible HTTPS URL. "
+                        + "Set PUBLIC_BASE_URL in application.properties or environment variables "
+                        + "(e.g., https://your-ngrok-domain.ngrok-free.app).");
+            }
+            if (!base.startsWith("https://")) {
+                throw new IllegalArgumentException(
+                        "PUBLIC_BASE_URL must start with https://. Current value scheme is not HTTPS. "
+                        + "Meta does not accept HTTP or localhost URLs.");
+            }
+            return base + "/api/media/files/" + fileName;
+        }
+
+        // Case 3: cannot resolve — refuse rather than send a bad URL to Meta
+        throw new IllegalArgumentException(
+                "Cannot construct a public HTTPS media URL from the provided media path or image URL. "
+                + "Ensure PUBLIC_BASE_URL is configured and the media has been uploaded via MediaStorageService.");
+    }
+
+    /**
+     * Extracts just the filename portion from a path, URL, or API path.
+     * Strips query strings and strips any leading directory segments.
+     */
+    private String extractMediaFileName(String pathOrUrl) {
+        if (pathOrUrl == null || pathOrUrl.isBlank()) return null;
+        String clean = pathOrUrl.replace("\\", "/");
+        if (clean.contains("?")) clean = clean.substring(0, clean.indexOf('?'));
+        int slash = clean.lastIndexOf('/');
+        String name = slash >= 0 ? clean.substring(slash + 1) : clean;
+        return name.isBlank() ? null : name;
     }
 
     private Long extractCount(Object val) {

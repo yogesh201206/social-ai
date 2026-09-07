@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { useAuth } from './AuthContext'
 import postService from '../services/postService'
+import { resolvePostMediaUrl } from '../utils/mediaUtils'
 
 const PostContext = createContext()
 
@@ -53,12 +54,21 @@ function mapPostFromBackend(p) {
 
   const tz = p.timezone || 'Asia/Kolkata'
 
+  const resolvedImage = resolvePostMediaUrl({
+    imageUrl: p.imageUrl,
+    mediaPath: p.mediaPath,
+  })
+
   return {
     id: String(p.id),
     title: p.title,
     caption: p.caption || '',
-    imageUrl: p.imageUrl,
-    image: p.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&h=400&fit=crop',
+    imageUrl: p.imageUrl || null,
+    mediaPath: p.mediaPath || null,
+    mediaType: p.mediaType || null,
+    originalFileName: p.originalFileName || null,
+    platformPostUrl: p.externalUrl || p.platformPostUrl || null,
+    image: resolvedImage || p.imageUrl || null,
     hashtags,
     platform,
     restaurantId: p.restaurantId ? String(p.restaurantId) : '',
@@ -73,13 +83,18 @@ function mapPostFromBackend(p) {
     scheduledDate: formatScheduleDate(p.scheduledAt, tz),
     scheduledTime: formatScheduleTime(p.scheduledAt, tz),
     publishedAt: p.publishedAt ? new Date(p.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null,
+    publishedDateTime: p.publishedAt ? new Date(p.publishedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : null,
     createdAt: p.createdAt ? new Date(p.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
     platformPostId: p.platformPostId || null,
+    externalUrl: p.externalUrl || null,
     failureReason: p.failureReason || null,
     likes: p.likes ?? null,
     comments: p.comments ?? null,
     shares: p.shares ?? null,
     views: p.views ?? null,
+    impressions: p.impressions ?? p.views ?? null,
+    reach: p.reach ?? p.views ?? null,
+    engagementRate: p.engagementRate ?? null,
     metricsStatus: p.metricsStatus || 'NOT_FETCHED',
     metricsUpdatedAt: p.metricsUpdatedAt || null,
     metrics: (p.likes != null || p.comments != null || p.shares != null || p.views != null)
@@ -129,6 +144,9 @@ export function PostProvider({ children }) {
       title: post.title,
       caption: post.caption || '',
       imageUrl: post.image || post.imageUrl || null,
+      mediaPath: post.mediaPath || null,
+      mediaType: post.mediaType || null,
+      originalFileName: post.originalFileName || null,
       hashtags: hashtagsStr,
       platform: platformEnum,
       restaurantId: post.restaurantId ? Number(post.restaurantId) : null,
@@ -150,6 +168,15 @@ export function PostProvider({ children }) {
     if (updates.caption !== undefined) payload.caption = updates.caption
     if (updates.image !== undefined || updates.imageUrl !== undefined) {
       payload.imageUrl = updates.image || updates.imageUrl
+    }
+    if (updates.mediaPath !== undefined) {
+      payload.mediaPath = updates.mediaPath
+    }
+    if (updates.mediaType !== undefined) {
+      payload.mediaType = updates.mediaType
+    }
+    if (updates.originalFileName !== undefined) {
+      payload.originalFileName = updates.originalFileName
     }
     if (updates.hashtags !== undefined) {
       payload.hashtags = Array.isArray(updates.hashtags) ? updates.hashtags.join(' ') : updates.hashtags

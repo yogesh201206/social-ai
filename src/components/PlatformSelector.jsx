@@ -1,8 +1,8 @@
 import * as Icons from 'lucide-react'
 import { platforms, platformIcons, platformColors } from '../data/postsData'
 
-// Platforms that are Coming Soon (Meta Business verification required for Instagram)
-const COMING_SOON_PLATFORMS = ['Instagram']
+// Platforms that are Coming Soon
+const COMING_SOON_PLATFORMS = []
 
 // UI display labels — value (key) stays as backend-compatible enum name
 const platformDisplayLabels = {

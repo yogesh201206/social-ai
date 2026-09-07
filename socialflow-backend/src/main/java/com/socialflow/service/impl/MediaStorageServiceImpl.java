@@ -20,6 +20,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 /**
  * Implementation of MediaStorageService managing temporary and scheduled media files on disk.
@@ -34,8 +35,12 @@ public class MediaStorageServiceImpl implements MediaStorageService {
     @Value("${socialflow.upload.scheduled-dir:uploads/scheduled}")
     private String scheduledDirConfig;
 
+    @Value("${socialflow.upload.published-dir:uploads/published}")
+    private String publishedDirConfig;
+
     private Path tempBasePath;
     private Path scheduledBasePath;
+    private Path publishedBasePath;
 
     private static final Set<String> ALLOWED_VIDEO_EXTENSIONS = Set.of(".mp4", ".mov", ".webm");
     private static final Set<String> ALLOWED_VIDEO_MIME_TYPES = Set.of(
@@ -52,8 +57,9 @@ public class MediaStorageServiceImpl implements MediaStorageService {
 
     @PostConstruct
     public void init() {
-        this.tempBasePath = Paths.get(tempDirConfig).toAbsolutePath().normalize();
+        this.tempBasePath      = Paths.get(tempDirConfig).toAbsolutePath().normalize();
         this.scheduledBasePath = Paths.get(scheduledDirConfig).toAbsolutePath().normalize();
+        this.publishedBasePath = Paths.get(publishedDirConfig).toAbsolutePath().normalize();
 
         try {
             Files.createDirectories(this.tempBasePath);
@@ -64,8 +70,11 @@ public class MediaStorageServiceImpl implements MediaStorageService {
             Files.createDirectories(this.scheduledBasePath.resolve("youtube"));
             Files.createDirectories(this.scheduledBasePath.resolve("general"));
 
-            log.info("[MediaStorage] Initialized storage paths -> temp: {}, scheduled: {}",
-                    this.tempBasePath, this.scheduledBasePath);
+            // Published media is stored flat — no per-platform subdirs needed.
+            Files.createDirectories(this.publishedBasePath);
+
+            log.info("[MediaStorage] Initialized storage paths -> temp: {}, scheduled: {}, published: {}",
+                    this.tempBasePath, this.scheduledBasePath, this.publishedBasePath);
         } catch (IOException e) {
             log.error("[MediaStorage] Could not create storage directories: {}", e.getMessage());
         }
@@ -181,6 +190,45 @@ public class MediaStorageServiceImpl implements MediaStorageService {
         return mediaPath;
     }
 
+    /**
+     * Moves a media file from temp or scheduled storage into uploads/published/ so that
+     * it survives permanently after a post is successfully published.
+     * The file is moved (not copied) to avoid duplicate disk usage.
+     * Returns the new relative path, e.g. "uploads/published/{filename}".
+     * Falls back to the original path on any error so the caller can still save to DB.
+     */
+    @Override
+    public String promoteToPublished(String mediaPath) {
+        if (mediaPath == null || mediaPath.isBlank()) return mediaPath;
+
+        // If the path already points into the published directory, nothing to do.
+        if (mediaPath.contains("uploads/published/")) {
+            return mediaPath;
+        }
+
+        try {
+            Path sourceFile = resolveSafePath(mediaPath);
+            if (sourceFile != null && Files.exists(sourceFile)) {
+                String fileName = sourceFile.getFileName().toString();
+
+                // Published files are stored flat (no platform subfolder needed).
+                Files.createDirectories(this.publishedBasePath);
+                Path targetFile = this.publishedBasePath.resolve(fileName);
+
+                Files.move(sourceFile, targetFile, StandardCopyOption.REPLACE_EXISTING);
+                String newRelativePath = "uploads/published/" + fileName;
+
+                log.info("[MediaStorage] Promoted media to published storage: {} -> {}", mediaPath, newRelativePath);
+                return newRelativePath;
+            } else {
+                log.warn("[MediaStorage] promoteToPublished: source not found for path '{}' — keeping original", mediaPath);
+            }
+        } catch (Exception e) {
+            log.warn("[MediaStorage] Failed to promote file to published storage {}: {}", mediaPath, e.getMessage());
+        }
+        return mediaPath;
+    }
+
     @Override
     public boolean deleteMediaFile(String mediaPath) {
         if (mediaPath == null || mediaPath.isBlank()) return false;
@@ -241,20 +289,58 @@ public class MediaStorageServiceImpl implements MediaStorageService {
         throw new BadRequestException("File not found: " + fileNameOrPath);
     }
 
+    /**
+     * Searches for a file by name recursively within tempBasePath, scheduledBasePath,
+     * and publishedBasePath.
+     * Rejects path traversal attempts and only returns regular files inside the approved roots.
+     * Supports all platform subfolders (facebook, instagram, youtube, general, etc.) automatically.
+     *
+     * @param fileName bare filename (no directory components)
+     * @return resolved absolute Path if found, or null
+     */
     private Path findFileByName(String fileName) {
-        // Look in temp
-        Path inTemp = this.tempBasePath.resolve("youtube").resolve(fileName);
-        if (Files.exists(inTemp)) return inTemp;
-        inTemp = this.tempBasePath.resolve("general").resolve(fileName);
-        if (Files.exists(inTemp)) return inTemp;
+        if (fileName == null || fileName.isBlank()) return null;
 
-        // Look in scheduled
-        Path inSched = this.scheduledBasePath.resolve("youtube").resolve(fileName);
-        if (Files.exists(inSched)) return inSched;
-        inSched = this.scheduledBasePath.resolve("general").resolve(fileName);
-        if (Files.exists(inSched)) return inSched;
+        // Strip any directory components to prevent path traversal
+        String safeName = Paths.get(fileName).getFileName().toString();
+        if (safeName.isBlank() || safeName.contains("..")) {
+            log.warn("[MediaStorage] Rejected unsafe filename in findFileByName: {}", fileName);
+            return null;
+        }
 
-        return null;
+        // Search published first (most likely for recently-published posts),
+        // then scheduled, then temp.
+        Path found = findRecursively(this.publishedBasePath, safeName);
+        if (found != null) return found;
+
+        found = findRecursively(this.scheduledBasePath, safeName);
+        if (found != null) return found;
+
+        return findRecursively(this.tempBasePath, safeName);
+    }
+
+    /**
+     * Recursively walks basePath looking for a regular file whose name exactly matches fileName.
+     * Uses try-with-resources to ensure the stream is always closed.
+     * Never returns a path outside basePath.
+     *
+     * @param basePath root directory to search (tempBasePath or scheduledBasePath)
+     * @param fileName bare filename to match
+     * @return absolute Path of the first match, or null if not found
+     */
+    private Path findRecursively(Path basePath, String fileName) {
+        if (basePath == null || !Files.exists(basePath)) return null;
+
+        try (Stream<Path> stream = Files.walk(basePath)) {
+            return stream
+                    .filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().equals(fileName))
+                    .findFirst()
+                    .orElse(null);
+        } catch (IOException e) {
+            log.warn("[MediaStorage] Failed to search '{}' under {}: {}", fileName, basePath, e.getMessage());
+            return null;
+        }
     }
 
     private Path resolveSafePath(String rawPath) {
@@ -274,17 +360,22 @@ public class MediaStorageServiceImpl implements MediaStorageService {
 
         Path path = Paths.get(clean).normalize();
         if (path.isAbsolute()) {
-            if (path.startsWith(this.tempBasePath) || path.startsWith(this.scheduledBasePath)) {
+            if (path.startsWith(this.tempBasePath)
+                    || path.startsWith(this.scheduledBasePath)
+                    || path.startsWith(this.publishedBasePath)) {
                 return path;
             }
             return null;
         }
 
-        // Relative path like uploads/temp/youtube/uuid.mp4 or uploads/scheduled/youtube/uuid.mp4
+        // Relative path like uploads/temp/youtube/uuid.mp4,
+        // uploads/scheduled/youtube/uuid.mp4, or uploads/published/uuid.jpg
         Path currentDir = Paths.get(".").toAbsolutePath().normalize();
         Path resolved = currentDir.resolve(path).normalize();
 
-        if (resolved.startsWith(this.tempBasePath) || resolved.startsWith(this.scheduledBasePath)) {
+        if (resolved.startsWith(this.tempBasePath)
+                || resolved.startsWith(this.scheduledBasePath)
+                || resolved.startsWith(this.publishedBasePath)) {
             return resolved;
         }
 

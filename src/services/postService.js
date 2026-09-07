@@ -65,7 +65,14 @@ export const postService = {
   },
 
   /**
-   * Fetches real metrics from the connected social media platform.
+   * Fetches latest metrics for a post.
+   */
+  getMetrics: async (id) => {
+    return await apiFetch(`/posts/${id}/metrics`)
+  },
+
+  /**
+   * Triggers real-time metrics refresh from the connected social media platform.
    */
   refreshMetrics: async (id) => {
     return await apiFetch(`/posts/${id}/metrics`, {

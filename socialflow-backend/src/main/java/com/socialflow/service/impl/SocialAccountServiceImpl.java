@@ -158,8 +158,9 @@ public class SocialAccountServiceImpl implements SocialAccountService {
         String pkceVerifier = account.getPkceCodeVerifier();
         TokenResult tokens = exchangeCodeForTokens(platform, code, account.getRestaurant().getId(), pkceVerifier);
 
-        // 3. Update account with tokens
-        account.setAccessToken(tokens.accessToken());
+        // 3. Update account with tokens (overwrite any stale token cleanly)
+        String cleanedAccessToken = cleanToken(tokens.accessToken());
+        account.setAccessToken(cleanedAccessToken);
         account.setRefreshToken(tokens.refreshToken());
         account.setTokenExpiresAt(tokens.expiresAt());
         account.setAccountName(tokens.accountName());
@@ -169,7 +170,10 @@ public class SocialAccountServiceImpl implements SocialAccountService {
         account.setPkceCodeVerifier(null); // Clear PKCE verifier after use
 
         SocialAccount saved = socialAccountRepository.save(account);
-        log.info("[Social] Connected {} account for restaurant={}", platform, account.getRestaurant().getId());
+        log.info("[Social] Connected {} account for restaurant={} (tokenLength={}, containsWhitespace={})",
+                platform, account.getRestaurant().getId(),
+                cleanedAccessToken != null ? cleanedAccessToken.length() : 0,
+                cleanedAccessToken != null && cleanedAccessToken.contains(" "));
 
         return SocialAccountCallbackResult.connected(mapToResponse(saved));
     }
@@ -604,7 +608,7 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                 throw new BadRequestException("Failed to obtain Instagram access token.");
             }
 
-            String accessToken = (String) tokenResponse.get("access_token");
+            String accessToken = cleanToken((String) tokenResponse.get("access_token"));
             final String shortLivedAccessToken = accessToken;
             Object userIdObj = tokenResponse.get("user_id");
             String userId = userIdObj != null ? String.valueOf(userIdObj) : null;
@@ -626,7 +630,10 @@ public class SocialAccountServiceImpl implements SocialAccountService {
 
                 Map<String, Object> longLivedResponse = parseInstagramResponse(longLivedResponseBody, "Instagram long-lived token exchange");
                 if (longLivedResponse != null && longLivedResponse.containsKey("access_token")) {
-                    accessToken = (String) longLivedResponse.get("access_token");
+                    String cleanLongLived = cleanToken((String) longLivedResponse.get("access_token"));
+                    if (cleanLongLived != null && !cleanLongLived.isBlank()) {
+                        accessToken = cleanLongLived;
+                    }
                     Integer expiresIn = longLivedResponse.get("expires_in") instanceof Number n ? n.intValue() : null;
                     if (expiresIn != null) {
                         expiresAt = LocalDateTime.now().plusSeconds(expiresIn);
@@ -634,6 +641,10 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                 }
             } catch (Exception ex) {
                 log.warn("[Social] Could not exchange short-lived Instagram token for long-lived token, continuing with short-lived token: {}", ex.getMessage());
+            }
+
+            if (accessToken == null || accessToken.isBlank() || accessToken.contains(" ")) {
+                throw new BadRequestException("INSTAGRAM_TOKEN_INVALID: Instagram API returned an invalid or empty access token.");
             }
 
             // Step 3: Fetch Instagram Profile (ID and Username) via https://graph.instagram.com/v20.0/me
@@ -691,6 +702,9 @@ public class SocialAccountServiceImpl implements SocialAccountService {
                 throw new BadRequestException("Could not obtain a valid Instagram Account ID.");
             }
 
+            log.info("[Social] Instagram OAuth tokens obtained: platformAccountId={}, tokenLength={}, containsWhitespace={}",
+                    platformAccountId, accessToken.length(), accessToken.contains(" "));
+
             return new TokenResult(accessToken, null, expiresAt, accountName, platformAccountId);
 
         } catch (HttpClientErrorException e) {
@@ -703,6 +717,15 @@ public class SocialAccountServiceImpl implements SocialAccountService {
             log.error("[Social] Unexpected error during Instagram OAuth callback: {}", e.getMessage());
             throw new BadRequestException("Failed to exchange Instagram authorization code: " + e.getMessage());
         }
+    }
+
+    private String cleanToken(String token) {
+        if (token == null) return null;
+        String t = token.trim();
+        if ((t.startsWith("\"") && t.endsWith("\"")) || (t.startsWith("'") && t.endsWith("'"))) {
+            t = t.substring(1, t.length() - 1).trim();
+        }
+        return t;
     }
 
     @SuppressWarnings("unchecked")

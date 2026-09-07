@@ -12,7 +12,7 @@ import { schedulerTimezones } from '../../data/schedulerData'
 import { userProfile } from '../../data/dashboardData'
 
 // Platforms not yet live — show Coming Soon instead of publishing
-const COMING_SOON_PLATFORMS = ['Instagram']
+const COMING_SOON_PLATFORMS = []
 
 const defaultForm = {
   title: '',
@@ -203,6 +203,8 @@ export default function CreatePost() {
       newErrors.platform = `${form.platform} integration is coming soon. Please select Facebook, LinkedIn, or YouTube.`
     } else if (form.platform === 'YouTube' && !video?.preview && !video?.mediaUrl) {
       newErrors.video = 'YouTube publishing requires a video.'
+    } else if (form.platform === 'Instagram' && !image?.preview && !image?.mediaUrl) {
+      newErrors.image = 'Instagram publishing requires an image.'
     }
     if (!form.restaurantId) newErrors.restaurantId = 'Please select a restaurant'
 
@@ -246,7 +248,7 @@ export default function CreatePost() {
     if (isYouTube) {
       finalImageUrl = video?.mediaUrl || video?.preview || ''
     } else {
-      finalImageUrl = image?.preview || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&h=400&fit=crop'
+      finalImageUrl = image?.mediaUrl || image?.preview || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&h=400&fit=crop'
     }
 
     let caption = form.caption
@@ -259,9 +261,9 @@ export default function CreatePost() {
       caption,
       imageUrl: finalImageUrl,
       image: finalImageUrl,
-      mediaPath: isYouTube ? (video?.mediaPath || null) : null,
-      mediaType: isYouTube ? (video?.mediaType || 'video/mp4') : null,
-      originalFileName: isYouTube ? (video?.originalFileName || video?.fileName || null) : null,
+      mediaPath: isYouTube ? (video?.mediaPath || null) : (image?.mediaPath || null),
+      mediaType: isYouTube ? (video?.mediaType || 'video/mp4') : (image?.mediaType || 'image/jpeg'),
+      originalFileName: isYouTube ? (video?.originalFileName || video?.fileName || null) : (image?.originalFileName || image?.fileName || null),
       platform: form.platform,
       status,
       hashtags,
@@ -529,9 +531,16 @@ export default function CreatePost() {
             ) : (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Upload Image
+                  Upload Image {form.platform === 'Instagram' && <span className="text-red-500">*</span>}
                 </label>
-                <UploadBox value={image} onChange={setImage} />
+                <UploadBox
+                  value={image}
+                  onChange={(img) => {
+                    setImage(img)
+                    if (errors.image) setErrors((prev) => ({ ...prev, image: null }))
+                  }}
+                />
+                {errors.image && <p className="text-xs text-red-500 mt-1">{errors.image}</p>}
               </div>
             )}
           </div>

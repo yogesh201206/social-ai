@@ -6,6 +6,7 @@ import PostsNav from '../../components/PostsNav'
 import StatusBadge from '../../components/StatusBadge'
 import EmptyState from '../../components/EmptyState'
 import { PostCardSkeleton } from '../../components/Skeleton'
+import PostMediaPreview from '../../components/PostMediaPreview'
 
 export default function PublishedPosts() {
   const { getPostsByStatus } = usePosts()
@@ -47,13 +48,13 @@ export default function PublishedPosts() {
               key={post.id}
               className="glass rounded-2xl overflow-hidden group hover:shadow-lg hover:shadow-brand-500/10 transition-all duration-300 hover:-translate-y-1"
             >
-              <div className="relative aspect-[16/10] overflow-hidden">
-                <img
-                  src={post.image}
+              <div className="relative aspect-[16/10] overflow-hidden bg-gray-100 dark:bg-gray-800">
+                <PostMediaPreview
+                  post={post}
                   alt={post.title}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />
-                <div className="absolute top-3 left-3">
+                <div className="absolute top-3 left-3 z-10 pointer-events-none">
                   <StatusBadge status={post.status} />
                 </div>
               </div>

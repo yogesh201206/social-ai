@@ -246,7 +246,7 @@ export default function RestaurantDetails() {
               </div>
               <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Active Campaigns</span>
               <p className="text-2xl font-black text-gray-900 dark:text-white mt-0.5">
-                {restaurant.performance?.campaigns || 6}
+                {restaurant.performance?.campaigns || 0}
               </p>
             </Card>
 
@@ -256,7 +256,7 @@ export default function RestaurantDetails() {
               </div>
               <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Audience Reach</span>
               <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
-                {restaurant.performance?.reach || '120K'}
+                {restaurant.performance?.reach || 0}
               </p>
             </Card>
           </div>

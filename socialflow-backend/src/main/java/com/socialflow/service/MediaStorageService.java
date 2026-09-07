@@ -24,7 +24,15 @@ public interface MediaStorageService {
     String promoteToScheduled(String mediaPath);
 
     /**
-     * Safely deletes a media file from disk (temp or scheduled).
+     * Moves a media file (temp or scheduled) into uploads/published/ so it persists
+     * permanently after a post is successfully published.
+     * Returns the new relative path under uploads/published/, or the original path if
+     * the move cannot be performed.
+     */
+    String promoteToPublished(String mediaPath);
+
+    /**
+     * Safely deletes a media file from disk (temp, scheduled, or published).
      */
     boolean deleteMediaFile(String mediaPath);
 

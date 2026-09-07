@@ -1,16 +1,20 @@
 import { Link } from 'react-router-dom'
 import { Pencil, Trash2, Eye, FileText } from 'lucide-react'
 import StatusBadge from './StatusBadge'
+import PostMediaPreview from './PostMediaPreview'
 
 export default function DraftCard({ post, onDelete }) {
   return (
     <article className="glass rounded-2xl p-5 hover:shadow-lg hover:shadow-brand-500/10 transition-all duration-300 hover:-translate-y-0.5">
       <div className="flex gap-4">
-        <img
-          src={post.image}
-          alt={post.title}
-          className="h-20 w-20 rounded-xl object-cover flex-shrink-0"
-        />
+        <div className="h-20 w-20 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-gray-800">
+          <PostMediaPreview
+            post={post}
+            alt={post.title}
+            className="h-full w-full object-cover"
+            showControls={false}
+          />
+        </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-semibold text-gray-900 dark:text-white truncate">{post.title}</h3>

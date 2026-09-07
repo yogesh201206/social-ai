@@ -1,6 +1,7 @@
 import { Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, ThumbsUp, Repeat2, Send, Play } from 'lucide-react'
 import * as Icons from 'lucide-react'
 import { platformIcons } from '../data/postsData'
+import PostMediaPreview from './PostMediaPreview'
 
 function InstagramPreview({ post }) {
   return (
@@ -13,7 +14,9 @@ function InstagramPreview({ post }) {
         </div>
         <MoreHorizontal className="h-5 w-5 text-gray-400" />
       </div>
-      <img src={post.image} alt="" className="w-full aspect-square object-cover" />
+      <div className="w-full aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800">
+        <PostMediaPreview post={post} className="w-full h-full object-cover" />
+      </div>
       <div className="p-3">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-4">
@@ -56,7 +59,9 @@ function FacebookPreview({ post }) {
           <p className="text-sm text-blue-600 dark:text-blue-400 mb-3">{post.hashtags.join(' ')}</p>
         )}
       </div>
-      <img src={post.image} alt="" className="w-full aspect-[4/3] object-cover" />
+      <div className="w-full aspect-[4/3] overflow-hidden bg-gray-100 dark:bg-gray-800">
+        <PostMediaPreview post={post} className="w-full h-full object-cover" />
+      </div>
       <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800">
         <div className="flex items-center justify-around text-gray-500">
           <button className="flex items-center gap-2 text-sm hover:text-blue-600 transition-colors">
@@ -89,7 +94,9 @@ function TwitterPreview({ post }) {
           {post.hashtags?.length > 0 && (
             <p className="text-sm text-blue-500 mt-1">{post.hashtags.join(' ')}</p>
           )}
-          <img src={post.image} alt="" className="w-full rounded-xl mt-3 aspect-video object-cover" />
+          <div className="w-full rounded-xl mt-3 aspect-video overflow-hidden bg-gray-100 dark:bg-gray-800">
+            <PostMediaPreview post={post} className="w-full h-full object-cover rounded-xl" />
+          </div>
           <div className="flex items-center justify-between mt-3 max-w-xs text-gray-500">
             <MessageCircle className="h-4 w-4" />
             <Repeat2 className="h-4 w-4" />
@@ -119,8 +126,10 @@ function LinkedInPreview({ post }) {
           <p className="text-sm text-blue-600 dark:text-blue-400 mb-3">{Array.isArray(post.hashtags) ? post.hashtags.join(' ') : post.hashtags}</p>
         )}
       </div>
-      {post.image && (
-        <img src={post.image} alt="" className="w-full aspect-video object-cover" />
+      {(post.image || post.imageUrl || post.mediaPath) && (
+        <div className="w-full aspect-video overflow-hidden bg-gray-100 dark:bg-gray-800">
+          <PostMediaPreview post={post} className="w-full h-full object-cover" />
+        </div>
       )}
       <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between text-gray-500 text-xs">
         <button className="flex items-center gap-1.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors font-medium">
@@ -155,7 +164,9 @@ function YouTubePreview({ post }) {
         {post.hashtags?.length > 0 && (
           <p className="text-sm text-blue-600 dark:text-blue-400 mb-3">{Array.isArray(post.hashtags) ? post.hashtags.join(' ') : post.hashtags}</p>
         )}
-        <img src={post.image} alt="" className="w-full rounded-xl aspect-video object-cover" />
+        <div className="w-full rounded-xl aspect-video overflow-hidden bg-black/5 dark:bg-gray-800">
+          <PostMediaPreview post={post} className="w-full h-full object-cover rounded-xl" />
+        </div>
         {post.cta && (
           <button className="mt-3 px-4 py-2 rounded-full bg-red-600 text-white text-sm font-medium">
             {post.cta}

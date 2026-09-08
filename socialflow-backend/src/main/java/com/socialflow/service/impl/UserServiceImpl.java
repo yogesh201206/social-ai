@@ -77,6 +77,36 @@ public class UserServiceImpl implements UserService {
         return changeUserStatus(id, UserStatus.SUSPENDED);
     }
 
+    @Override
+    public UserResponse getCurrentUserProfile(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));
+        return mapToUserResponse(user);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse updateCurrentUserProfile(String email, com.socialflow.dto.ProfileUpdateRequest request) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with email: " + email));
+
+        if (request.getName() != null && !request.getName().trim().isEmpty()) {
+            user.setName(request.getName().trim());
+        }
+        if (request.getPhone() != null) {
+            user.setPhone(request.getPhone().trim());
+        }
+        if (request.getBusinessName() != null) {
+            user.setBusinessName(request.getBusinessName().trim());
+        }
+        if (request.getBusinessType() != null) {
+            user.setBusinessType(request.getBusinessType().trim());
+        }
+
+        User updated = userRepository.save(user);
+        return mapToUserResponse(updated);
+    }
+
     private UserResponse changeUserStatus(Long id, UserStatus status) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));

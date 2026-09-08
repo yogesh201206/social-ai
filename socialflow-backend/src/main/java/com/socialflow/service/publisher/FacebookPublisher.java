@@ -15,8 +15,12 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
@@ -311,6 +315,120 @@ public class FacebookPublisher implements SocialMediaPublisher {
                 platformPostId, likes, comments, shares, views);
 
         return MetricsResult.available(likes, comments, shares, views);
+    }
+
+    @Override
+    public ActivityResult fetchActivities(Post post, SocialAccount account) {
+        if (post == null || post.getPlatformPostId() == null || post.getPlatformPostId().isBlank()) {
+            return ActivityResult.notFetched("No platform post ID");
+        }
+
+        if (account == null || account.getAccessToken() == null || account.getAccessToken().isBlank()) {
+            return ActivityResult.permissionRequired("Facebook access token is missing or expired");
+        }
+
+        String platformPostId = post.getPlatformPostId();
+        String pageAccessToken = account.getAccessToken();
+        List<SocialActivityItem> items = new ArrayList<>();
+
+        try {
+            URI uri = UriComponentsBuilder.fromUriString(GRAPH_API_BASE + "/" + platformPostId + "/comments")
+                    .queryParam("fields", "id,from{id,name,picture},message,created_time")
+                    .queryParam("limit", 50)
+                    .queryParam("access_token", pageAccessToken)
+                    .build()
+                    .encode()
+                    .toUri();
+
+            log.info("[Facebook] Fetching activities for post {}: GET {}/{}/comments", platformPostId, GRAPH_API_BASE, platformPostId);
+
+            String responseBody = restClient.get()
+                    .uri(uri)
+                    .retrieve()
+                    .body(String.class);
+
+            Map<String, Object> response = parseMetaJson(responseBody);
+            if (response != null && response.containsKey("error")) {
+                MetaErrorInfo err = extractMetaErrorInfo(response.get("error"));
+                log.warn("[Facebook] Error on comments query: code={}, message='{}'", err.code(), err.message());
+                if (err.code() == 190 || err.code() == 102 || err.code() == 200 || err.code() == 273
+                        || err.message().toLowerCase().contains("permission")) {
+                    return ActivityResult.permissionRequired("Facebook activity permission is required for this post.");
+                }
+                return ActivityResult.apiError("Facebook API error: " + err.message());
+            }
+
+            if (response != null && response.get("data") instanceof List<?> dataList) {
+                for (Object itemObj : dataList) {
+                    if (itemObj instanceof Map<?, ?> commentMap) {
+                        String commentId = commentMap.get("id") != null ? String.valueOf(commentMap.get("id")) : null;
+                        String message = commentMap.get("message") != null ? String.valueOf(commentMap.get("message")) : null;
+                        String createdTimeStr = commentMap.get("created_time") != null ? String.valueOf(commentMap.get("created_time")) : null;
+
+                        String actorName = null;
+                        String actorId = null;
+                        String actorPic = null;
+
+                        if (commentMap.get("from") instanceof Map<?, ?> fromMap) {
+                            if (fromMap.get("name") != null) actorName = String.valueOf(fromMap.get("name"));
+                            if (fromMap.get("id") != null) actorId = String.valueOf(fromMap.get("id"));
+                            if (fromMap.get("picture") instanceof Map<?, ?> picMap && picMap.get("data") instanceof Map<?, ?> dataMap) {
+                                if (dataMap.get("url") != null) actorPic = String.valueOf(dataMap.get("url"));
+                            }
+                        }
+
+                        LocalDateTime createdAt = parseIsoDateTime(createdTimeStr);
+
+                        if (commentId != null) {
+                            items.add(new SocialActivityItem(
+                                    commentId,
+                                    "COMMENT",
+                                    actorId,
+                                    actorName,
+                                    actorPic,
+                                    message,
+                                    createdAt
+                            ));
+                        }
+                    }
+                }
+            }
+
+            return ActivityResult.available(items);
+
+        } catch (HttpClientErrorException e) {
+            String errBody = e.getResponseBodyAsString();
+            MetaErrorInfo err = extractMetaErrorInfo(parseMetaJson(errBody).get("error"));
+            int status = e.getStatusCode().value();
+            log.warn("[Facebook] HTTP {} on activities query for {}: code={}, message='{}'", status, platformPostId, err.code(), err.message());
+
+            if (status == 401 || status == 403 || err.code() == 190 || err.code() == 200 || err.code() == 273
+                    || err.message().toLowerCase().contains("permission")) {
+                return ActivityResult.permissionRequired("Facebook activity permission is required for this post.");
+            }
+            return ActivityResult.apiError("Facebook API error (HTTP " + status + "): " + err.message());
+        } catch (Exception e) {
+            log.warn("[Facebook] Unexpected error on activities query for {}: {}", platformPostId, e.getMessage());
+            return ActivityResult.apiError("Facebook activities fetch failed: " + e.getMessage());
+        }
+    }
+
+    private LocalDateTime parseIsoDateTime(String dateStr) {
+        if (dateStr == null || dateStr.isBlank()) return null;
+        try {
+            return OffsetDateTime.parse(dateStr, DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                    .toLocalDateTime();
+        } catch (Exception e1) {
+            try {
+                return java.time.Instant.parse(dateStr).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime();
+            } catch (Exception e2) {
+                try {
+                    return LocalDateTime.parse(dateStr);
+                } catch (Exception ignored) {
+                    return null;
+                }
+            }
+        }
     }
 
     private EngagementResult fetchPostEngagement(String platformPostId, String pageAccessToken) {

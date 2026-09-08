@@ -21,6 +21,7 @@ import java.util.Map;
 public class PostController {
 
     private final PostService postService;
+    private final com.socialflow.service.SocialActivityService socialActivityService;
 
     private boolean isAdmin(Authentication authentication) {
         if (authentication == null) return false;
@@ -44,6 +45,16 @@ public class PostController {
     public ResponseEntity<PostResponse> createPost(@Valid @RequestBody PostRequest request, Authentication authentication) {
         String email = authentication != null ? authentication.getName() : "";
         return new ResponseEntity<>(postService.createPost(request, email, isAdmin(authentication)), HttpStatus.CREATED);
+    }
+
+    @PostMapping(value = {"/multi", "/batch"})
+    public ResponseEntity<List<com.socialflow.dto.PlatformPublishResultDto>> createMultiPlatformPosts(
+            @Valid @RequestBody com.socialflow.dto.MultiPostRequest request,
+            Authentication authentication) {
+        String email = authentication != null ? authentication.getName() : "";
+        return new ResponseEntity<>(
+                postService.createMultiPlatformPosts(request, email, isAdmin(authentication)),
+                HttpStatus.CREATED);
     }
 
     @PutMapping("/{id}")
@@ -121,5 +132,25 @@ public class PostController {
     public ResponseEntity<PostResponse> refreshMetrics(@PathVariable Long id, Authentication authentication) {
         String email = authentication != null ? authentication.getName() : "";
         return ResponseEntity.ok(postService.refreshMetrics(id, email, isAdmin(authentication)));
+    }
+
+    /**
+     * GET /api/posts/{id}/activities
+     * Returns the stored social engagement activities (comments, interactions) for the post.
+     */
+    @GetMapping("/{id}/activities")
+    public ResponseEntity<com.socialflow.dto.PostActivitiesResponse> getActivities(@PathVariable Long id, Authentication authentication) {
+        String email = authentication != null ? authentication.getName() : "";
+        return ResponseEntity.ok(socialActivityService.getActivities(id, email, isAdmin(authentication)));
+    }
+
+    /**
+     * POST /api/posts/{id}/activities/refresh
+     * Refreshes real social engagement activities from the connected platform.
+     */
+    @PostMapping("/{id}/activities/refresh")
+    public ResponseEntity<com.socialflow.dto.PostActivitiesResponse> refreshActivities(@PathVariable Long id, Authentication authentication) {
+        String email = authentication != null ? authentication.getName() : "";
+        return ResponseEntity.ok(socialActivityService.refreshActivities(id, email, isAdmin(authentication)));
     }
 }

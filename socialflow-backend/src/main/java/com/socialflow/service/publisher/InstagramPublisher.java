@@ -22,6 +22,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
@@ -416,25 +418,235 @@ public class InstagramPublisher implements SocialMediaPublisher {
             return MetricsResult.notSupported("Post has no platform ID");
         }
 
+        String mediaId = post.getPlatformPostId();
+        String token = cleanToken(account.getAccessToken());
+
+        // Always use the Instagram Graph API base for the connected Instagram account flow.
+        // Do NOT derive the host from token prefix – that is unreliable.
+        String igGraphBase = DEFAULT_INSTAGRAM_GRAPH_BASE;
+
         try {
-            String token = cleanToken(account.getAccessToken());
-            String graphApiBase = resolveGraphApiBase(token);
             String responseBody = restClient.get()
-                    .uri(graphApiBase + "/" + post.getPlatformPostId() + "?fields=like_count,comments_count&access_token=" + token)
+                    .uri(igGraphBase + "/" + mediaId + "?fields=like_count,comments_count&access_token=" + token)
                     .retrieve()
                     .body(String.class);
 
             Map<String, Object> response = parseMetaJson(responseBody);
-            if (response != null) {
-                Long likes = response.get("like_count") instanceof Number n ? n.longValue() : 0L;
-                Long comments = response.get("comments_count") instanceof Number n ? n.longValue() : 0L;
-                return MetricsResult.available(likes, comments, 0L, likes + comments);
+
+            // Check for a top-level API error object in a 200 response body
+            if (response != null && response.containsKey("error")) {
+                return classifyMetricsError(response.get("error"), mediaId);
             }
+
+            if (response != null && (response.containsKey("like_count") || response.containsKey("comments_count"))) {
+                Long likes    = response.get("like_count")    instanceof Number n ? n.longValue() : 0L;
+                Long comments = response.get("comments_count") instanceof Number n ? n.longValue() : 0L;
+                // Do NOT fabricate views from engagement counts. Pass 0L; MetricsResult treats null/0 as unavailable.
+                return MetricsResult.available(likes, comments, 0L, 0L);
+            }
+
+            // Response parsed but contained no expected metric fields
+            log.warn("[Instagram] Metrics response for media {} contained no metric fields", mediaId);
+            return MetricsResult.notSupported("Instagram metrics fields not present in API response");
+
+        } catch (HttpClientErrorException ex) {
+            String errBody = ex.getResponseBodyAsString();
+            int httpStatus = ex.getStatusCode().value();
+            log.warn("[Instagram] Metrics HTTP {} for mediaId={}: {}", httpStatus, mediaId, errBody);
+
+            // OAuth token invalid / expired
+            if (isCode190Error(errBody) || httpStatus == 401) {
+                return MetricsResult.error("Instagram OAuth token is invalid or expired");
+            }
+
+            // Check JSON error body for permission or unsupported classification
+            Map<String, Object> errJson = parseMetaJson(errBody);
+            if (errJson != null && errJson.containsKey("error")) {
+                return classifyMetricsError(errJson.get("error"), mediaId);
+            }
+
+            return MetricsResult.error("Instagram API error (HTTP " + httpStatus + ")");
+
         } catch (Exception ex) {
-            log.debug("[Instagram] Could not fetch basic insights for media {}: {}", post.getPlatformPostId(), ex.getMessage());
+            log.warn("[Instagram] Unexpected error fetching metrics for mediaId={}: {}", mediaId, ex.getMessage());
+            return MetricsResult.error("Instagram metrics fetch failed: " + ex.getMessage());
+        }
+    }
+
+    /**
+     * Classifies a Meta/Instagram API error object into the correct MetricsResult.
+     * <ul>
+     *   <li>OAuthException / code 190 / code 102 → API_ERROR (invalid/expired token)</li>
+     *   <li>Permission / code 200/273 → PERMISSION_REQUIRED</li>
+     *   <li>Unsupported field / code 100/"IGApiException" → NOT_SUPPORTED</li>
+     *   <li>Everything else → API_ERROR</li>
+     * </ul>
+     * Never logs the access token.
+     */
+    @SuppressWarnings("unchecked")
+    private MetricsResult classifyMetricsError(Object errorObj, String mediaId) {
+        if (!(errorObj instanceof Map)) {
+            log.warn("[Instagram] Metrics error (non-map) for mediaId={}: {}", mediaId, errorObj);
+            return MetricsResult.error("Instagram API error: " + errorObj);
+        }
+        Map<String, Object> errMap = (Map<String, Object>) errorObj;
+        String type    = errMap.get("type")    != null ? String.valueOf(errMap.get("type"))    : "";
+        String message = errMap.get("message") != null ? String.valueOf(errMap.get("message")) : "Unknown error";
+        int    code    = errMap.get("code")    instanceof Number n ? n.intValue() : -1;
+        int    subcode = errMap.get("error_subcode") instanceof Number n ? n.intValue() : -1;
+
+        log.warn("[Instagram] Metrics API error for mediaId={}: type={}, code={}, subcode={}, message={}",
+                mediaId, type, code, subcode, message);
+
+        // OAuth / invalid token errors
+        if ("OAuthException".equalsIgnoreCase(type) || code == 190 || code == 102) {
+            return MetricsResult.error("Instagram OAuth token is invalid or expired: " + message);
         }
 
-        return MetricsResult.notSupported("Instagram insights not available for this media");
+        // Permission-related errors
+        if (code == 200 || code == 273
+                || message.toLowerCase().contains("permission")
+                || message.toLowerCase().contains("not authorized")
+                || message.toLowerCase().contains("business account")) {
+            return MetricsResult.permissionRequired("Instagram permission required: " + message);
+        }
+
+        // Unsupported field / media type
+        if (code == 100
+                || "IGApiException".equalsIgnoreCase(type)
+                || message.toLowerCase().contains("unsupported")
+                || message.toLowerCase().contains("not supported")
+                || message.toLowerCase().contains("invalid field")) {
+            return MetricsResult.notSupported("Instagram metric not supported for this media: " + message);
+        }
+
+        // General API error
+        return MetricsResult.error("Instagram API error (code=" + code + "): " + message);
+    }
+
+    @Override
+    public ActivityResult fetchActivities(Post post, SocialAccount account) {
+        if (post == null || post.getPlatformPostId() == null || post.getPlatformPostId().isBlank()) {
+            return ActivityResult.notSupported("Post has no platform ID");
+        }
+
+        String mediaId = post.getPlatformPostId();
+        String token = cleanToken(account.getAccessToken());
+        if (token == null || token.isBlank()) {
+            return ActivityResult.permissionRequired("Instagram access token is missing or expired.");
+        }
+
+        String igGraphBase = DEFAULT_INSTAGRAM_GRAPH_BASE;
+        List<SocialActivityItem> items = new ArrayList<>();
+
+        try {
+            String endpoint = igGraphBase + "/" + mediaId + "/comments?fields=id,text,timestamp,username&access_token=" + token;
+            log.info("[Instagram] Fetching activities for media {}: GET {}/{}/comments", mediaId, igGraphBase, mediaId);
+
+            String responseBody = restClient.get()
+                    .uri(endpoint)
+                    .retrieve()
+                    .body(String.class);
+
+            Map<String, Object> response = parseMetaJson(responseBody);
+            Set<String> responseKeys = (response != null) ? response.keySet() : Collections.emptySet();
+            boolean hasData = response != null && response.containsKey("data");
+            int dataCount = (response != null && response.get("data") instanceof List<?> list) ? list.size() : 0;
+
+            log.info("[Instagram] Comments response keys={}", responseKeys);
+            log.info("[Instagram] Comments response mediaId={} httpSuccess=true hasData={} dataCount={}", mediaId, hasData, dataCount);
+
+            if (response != null && response.containsKey("error")) {
+                Object errObj = response.get("error");
+                log.warn("[Instagram] Error fetching comments for mediaId={}: {}", mediaId, errObj);
+                if (errObj instanceof Map<?, ?> errMap) {
+                    String msg = String.valueOf(errMap.get("message"));
+                    int code = errMap.get("code") instanceof Number n ? n.intValue() : -1;
+                    if (code == 190 || code == 102 || code == 200 || code == 273
+                            || msg.toLowerCase().contains("permission") || msg.toLowerCase().contains("not authorized")) {
+                        return ActivityResult.permissionRequired("Instagram activity permission is required: " + msg);
+                    }
+                    if (code == 100 || msg.toLowerCase().contains("unsupported") || msg.toLowerCase().contains("not supported")) {
+                        return ActivityResult.notSupported("Instagram comments not supported for this media: " + msg);
+                    }
+                    return ActivityResult.apiError("Instagram API error: " + msg);
+                }
+                return ActivityResult.apiError("Instagram error: " + errObj);
+            }
+
+            if (response != null && response.get("data") instanceof List<?> dataList) {
+                for (Object itemObj : dataList) {
+                    if (itemObj instanceof Map<?, ?> commentMap) {
+                        String commentId = commentMap.get("id") != null ? String.valueOf(commentMap.get("id")) : null;
+                        String text = commentMap.get("text") != null ? String.valueOf(commentMap.get("text")) : null;
+                        String timestampStr = commentMap.get("timestamp") != null ? String.valueOf(commentMap.get("timestamp")) : null;
+                        String username = commentMap.get("username") != null ? String.valueOf(commentMap.get("username")) : null;
+                        boolean hasText = text != null && !text.isBlank();
+
+                        log.info("[Instagram] Comment item id={} username={} hasText={} timestamp={}",
+                                commentId, username, hasText, timestampStr);
+
+                        LocalDateTime createdAt = parseIsoDateTime(timestampStr);
+
+                        if (commentId != null) {
+                            items.add(new SocialActivityItem(
+                                    commentId,
+                                    "COMMENT",
+                                    null,
+                                    username,
+                                    null,
+                                    text,
+                                    createdAt
+                            ));
+                        }
+                    }
+                }
+            }
+
+            return ActivityResult.available(items);
+
+        } catch (HttpClientErrorException ex) {
+            String errBody = ex.getResponseBodyAsString();
+            int httpStatus = ex.getStatusCode().value();
+            log.warn("[Instagram] Comments HTTP {} for mediaId={}: {}", httpStatus, mediaId, errBody);
+
+            if (isCode190Error(errBody) || httpStatus == 401 || httpStatus == 403) {
+                return ActivityResult.permissionRequired("Instagram OAuth token is invalid or permission is denied.");
+            }
+
+            Map<String, Object> errJson = parseMetaJson(errBody);
+            if (errJson != null && errJson.containsKey("error") && errJson.get("error") instanceof Map<?, ?> errMap) {
+                String msg = String.valueOf(errMap.get("message"));
+                int code = errMap.get("code") instanceof Number n ? n.intValue() : -1;
+                if (code == 100 || msg.toLowerCase().contains("not supported")) {
+                    return ActivityResult.notSupported("Instagram comments not supported for this media: " + msg);
+                }
+                return ActivityResult.permissionRequired("Instagram activity permission is required: " + msg);
+            }
+
+            return ActivityResult.apiError("Instagram API error (HTTP " + httpStatus + ")");
+        } catch (Exception ex) {
+            log.warn("[Instagram] Unexpected error fetching comments for mediaId={}: {}", mediaId, ex.getMessage());
+            return ActivityResult.apiError("Instagram comments fetch failed: " + ex.getMessage());
+        }
+    }
+
+    private LocalDateTime parseIsoDateTime(String dateStr) {
+        if (dateStr == null || dateStr.isBlank()) return null;
+        try {
+            return OffsetDateTime.parse(dateStr, DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                    .toLocalDateTime();
+        } catch (Exception e1) {
+            try {
+                return java.time.Instant.parse(dateStr).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime();
+            } catch (Exception e2) {
+                try {
+                    return LocalDateTime.parse(dateStr);
+                } catch (Exception ignored) {
+                    return null;
+                }
+            }
+        }
     }
 
     private String cleanToken(String token) {

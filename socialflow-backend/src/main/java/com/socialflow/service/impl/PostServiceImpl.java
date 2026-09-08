@@ -523,6 +523,263 @@ public class PostServiceImpl implements PostService {
 
     @Override
     @Transactional
+    public List<com.socialflow.dto.PlatformPublishResultDto> createMultiPlatformPosts(
+            com.socialflow.dto.MultiPostRequest request, String currentUserEmail, boolean isAdmin) {
+
+        if (request.getTitle() == null || request.getTitle().trim().isEmpty()) {
+            throw new BadRequestException("Title is required");
+        }
+        if (request.getPlatforms() == null || request.getPlatforms().isEmpty()) {
+            throw new BadRequestException("At least one platform must be selected");
+        }
+        if (request.getRestaurantId() == null) {
+            throw new BadRequestException("Restaurant ID is required");
+        }
+
+        Restaurant restaurant = restaurantRepository.findById(request.getRestaurantId())
+                .orElseThrow(() -> new ResourceNotFoundException("Restaurant not found with id: " + request.getRestaurantId()));
+
+        if (!isAdmin && !restaurant.getOwner().getEmail().equalsIgnoreCase(currentUserEmail)) {
+            throw new UnauthorizedException("Not authorized to create posts for this restaurant");
+        }
+
+        Branch branch = null;
+        if (request.getBranchId() != null) {
+            branch = branchRepository.findById(request.getBranchId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Branch not found with id: " + request.getBranchId()));
+            if (!branch.getRestaurant().getId().equals(restaurant.getId())) {
+                throw new BadRequestException("Branch does not belong to the selected restaurant");
+            }
+        }
+
+        PostStatus targetStatus = request.getStatus() != null ? request.getStatus() : PostStatus.DRAFT;
+        boolean isPublishNow = Boolean.TRUE.equals(request.getPublishNow()) || targetStatus == PostStatus.PUBLISHED;
+        if (isPublishNow) {
+            targetStatus = PostStatus.DRAFT;
+        }
+
+        String tzStr = (request.getTimezone() != null && !request.getTimezone().isBlank())
+                ? request.getTimezone()
+                : "Asia/Kolkata";
+        LocalDateTime utcScheduledAt = null;
+
+        if (targetStatus == PostStatus.SCHEDULED && request.getScheduledAt() != null) {
+            utcScheduledAt = convertToUtc(request.getScheduledAt(), tzStr);
+            if (utcScheduledAt.isBefore(LocalDateTime.now(ZoneOffset.UTC).minusMinutes(1))) {
+                throw new BadRequestException("Scheduled date/time must be in the future");
+            }
+        } else if (request.getScheduledAt() != null) {
+            utcScheduledAt = convertToUtc(request.getScheduledAt(), tzStr);
+        }
+
+        String storedMediaPath = request.getMediaPath();
+        if (targetStatus == PostStatus.SCHEDULED && storedMediaPath != null && !storedMediaPath.isBlank()) {
+            storedMediaPath = mediaStorageService.promoteToScheduled(storedMediaPath);
+        }
+
+        // Filter and deduplicate platforms (only active supported: FACEBOOK, INSTAGRAM, LINKEDIN, YOUTUBE)
+        List<Platform> activePlatforms = request.getPlatforms().stream()
+                .filter(java.util.Objects::nonNull)
+                .filter(p -> p == Platform.FACEBOOK || p == Platform.INSTAGRAM || p == Platform.LINKEDIN || p == Platform.YOUTUBE)
+                .distinct()
+                .collect(Collectors.toList());
+
+        if (activePlatforms.isEmpty()) {
+            throw new BadRequestException("No valid supported platforms selected (supported: Facebook, Instagram, LinkedIn, YouTube)");
+        }
+
+        List<com.socialflow.dto.PlatformPublishResultDto> results = new java.util.ArrayList<>();
+
+        for (Platform platform : activePlatforms) {
+            Post post = Post.builder()
+                    .title(request.getTitle())
+                    .caption(request.getCaption())
+                    .imageUrl(request.getImageUrl())
+                    .mediaPath(storedMediaPath)
+                    .mediaType(request.getMediaType())
+                    .originalFileName(request.getOriginalFileName())
+                    .hashtags(request.getHashtags())
+                    .platform(platform)
+                    .restaurant(restaurant)
+                    .branch(branch)
+                    .status(targetStatus)
+                    .scheduledAt(utcScheduledAt)
+                    .timezone(tzStr)
+                    .build();
+
+            Post savedPost = postRepository.save(post);
+
+            if (targetStatus == PostStatus.SCHEDULED && !isPublishNow) {
+                if (utcScheduledAt != null) {
+                    ScheduledPost scheduledPost = ScheduledPost.builder()
+                            .post(savedPost)
+                            .restaurant(restaurant)
+                            .branch(branch)
+                            .platform(platform)
+                            .scheduledDateTime(utcScheduledAt)
+                            .timezone(tzStr)
+                            .status(ScheduleStatus.SCHEDULED)
+                            .build();
+                    scheduledPostRepository.save(scheduledPost);
+                }
+                results.add(com.socialflow.dto.PlatformPublishResultDto.builder()
+                        .platform(platform)
+                        .status(PostStatus.SCHEDULED)
+                        .postId(savedPost.getId())
+                        .message("Scheduled successfully for " + platform.name())
+                        .build());
+            } else if (!isPublishNow) {
+                results.add(com.socialflow.dto.PlatformPublishResultDto.builder()
+                        .platform(platform)
+                        .status(PostStatus.DRAFT)
+                        .postId(savedPost.getId())
+                        .message("Draft saved for " + platform.name())
+                        .build());
+            } else {
+                // Publish immediately per platform
+                // 1. Validate platform media compatibility
+                boolean hasMedia = (savedPost.getImageUrl() != null && !savedPost.getImageUrl().isBlank())
+                        || (savedPost.getMediaPath() != null && !savedPost.getMediaPath().isBlank());
+                boolean isVideo = (savedPost.getMediaType() != null && savedPost.getMediaType().toLowerCase().startsWith("video"))
+                        || (savedPost.getOriginalFileName() != null && (savedPost.getOriginalFileName().toLowerCase().endsWith(".mp4")
+                        || savedPost.getOriginalFileName().toLowerCase().endsWith(".mov")
+                        || savedPost.getOriginalFileName().toLowerCase().endsWith(".webm")))
+                        || (savedPost.getMediaPath() != null && (savedPost.getMediaPath().toLowerCase().endsWith(".mp4")
+                        || savedPost.getMediaPath().toLowerCase().endsWith(".mov")
+                        || savedPost.getMediaPath().toLowerCase().endsWith(".webm")));
+
+                if (platform == Platform.YOUTUBE && !isVideo) {
+                    savedPost.setStatus(PostStatus.FAILED);
+                    String errorMsg = "YouTube publishing requires a video file.";
+                    savedPost.setFailureReason(errorMsg);
+                    postRepository.save(savedPost);
+                    results.add(com.socialflow.dto.PlatformPublishResultDto.builder()
+                            .platform(platform)
+                            .status(PostStatus.FAILED)
+                            .postId(savedPost.getId())
+                            .error(errorMsg)
+                            .build());
+                    continue;
+                }
+
+                if (platform == Platform.INSTAGRAM && !hasMedia) {
+                    savedPost.setStatus(PostStatus.FAILED);
+                    String errorMsg = "Instagram publishing requires an image or video.";
+                    savedPost.setFailureReason(errorMsg);
+                    postRepository.save(savedPost);
+                    results.add(com.socialflow.dto.PlatformPublishResultDto.builder()
+                            .platform(platform)
+                            .status(PostStatus.FAILED)
+                            .postId(savedPost.getId())
+                            .error(errorMsg)
+                            .build());
+                    continue;
+                }
+
+                // 2. Validate connected social account
+                java.util.Optional<SocialAccount> accountOpt = socialAccountRepository
+                        .findByRestaurantIdAndPlatform(restaurant.getId(), platform);
+
+                if (accountOpt.isEmpty() || !Boolean.TRUE.equals(accountOpt.get().getIsConnected())) {
+                    savedPost.setStatus(PostStatus.FAILED);
+                    String errorMsg = "No connected " + platform.name() + " account found for this restaurant.";
+                    savedPost.setFailureReason(errorMsg);
+                    postRepository.save(savedPost);
+                    results.add(com.socialflow.dto.PlatformPublishResultDto.builder()
+                            .platform(platform)
+                            .status(PostStatus.FAILED)
+                            .postId(savedPost.getId())
+                            .error(errorMsg)
+                            .build());
+                    continue;
+                }
+
+                SocialAccount account = accountOpt.get();
+                if (!account.isTokenValid()) {
+                    savedPost.setStatus(PostStatus.FAILED);
+                    String errorMsg = platform.name() + " account token has expired. Please reconnect.";
+                    savedPost.setFailureReason(errorMsg);
+                    postRepository.save(savedPost);
+                    results.add(com.socialflow.dto.PlatformPublishResultDto.builder()
+                            .platform(platform)
+                            .status(PostStatus.FAILED)
+                            .postId(savedPost.getId())
+                            .error(errorMsg)
+                            .build());
+                    continue;
+                }
+
+                // 3. Mark as PROCESSING and publish
+                savedPost.setStatus(PostStatus.PROCESSING);
+                postRepository.save(savedPost);
+
+                try {
+                    SocialMediaPublisher publisher = publisherFactory.getPublisher(platform);
+                    com.socialflow.service.publisher.PublishResult pubResult = publisher.publish(savedPost, account);
+
+                    if (pubResult.success()) {
+                        savedPost.setStatus(PostStatus.PUBLISHED);
+                        savedPost.setPublishedAt(LocalDateTime.now(ZoneOffset.UTC));
+                        savedPost.setPlatformPostId(pubResult.platformPostId());
+                        if (pubResult.platformPostUrl() != null && !pubResult.platformPostUrl().isBlank()) {
+                            savedPost.setPlatformPostUrl(pubResult.platformPostUrl());
+                        }
+                        savedPost.setFailureReason(null);
+
+                        if (savedPost.getMediaPath() != null && !savedPost.getMediaPath().isBlank()) {
+                            String publishedPath = mediaStorageService.promoteToPublished(savedPost.getMediaPath());
+                            savedPost.setMediaPath(publishedPath);
+                        }
+                        postRepository.save(savedPost);
+
+                        results.add(com.socialflow.dto.PlatformPublishResultDto.builder()
+                                .platform(platform)
+                                .status(PostStatus.PUBLISHED)
+                                .postId(savedPost.getId())
+                                .platformPostId(pubResult.platformPostId())
+                                .externalUrl(pubResult.platformPostUrl())
+                                .message("Published successfully to " + platform.name())
+                                .build());
+
+                        log.info("[MultiPublish] Post id={} published to {} — platformPostId={}",
+                                savedPost.getId(), platform, pubResult.platformPostId());
+                    } else {
+                        savedPost.setStatus(PostStatus.FAILED);
+                        savedPost.setFailureReason(pubResult.errorMessage());
+                        postRepository.save(savedPost);
+
+                        results.add(com.socialflow.dto.PlatformPublishResultDto.builder()
+                                .platform(platform)
+                                .status(PostStatus.FAILED)
+                                .postId(savedPost.getId())
+                                .error(pubResult.errorMessage())
+                                .build());
+
+                        log.warn("[MultiPublish] Post id={} FAILED on {}: {}",
+                                savedPost.getId(), platform, pubResult.errorMessage());
+                    }
+                } catch (Exception ex) {
+                    log.error("[MultiPublish] Exception publishing post id={} to {}: {}",
+                            savedPost.getId(), platform, ex.getMessage());
+                    savedPost.setStatus(PostStatus.FAILED);
+                    savedPost.setFailureReason("Publishing exception: " + ex.getMessage());
+                    postRepository.save(savedPost);
+
+                    results.add(com.socialflow.dto.PlatformPublishResultDto.builder()
+                            .platform(platform)
+                            .status(PostStatus.FAILED)
+                            .postId(savedPost.getId())
+                            .error("Publishing exception: " + ex.getMessage())
+                            .build());
+                }
+            }
+        }
+
+        return results;
+    }
+
+    @Override
+    @Transactional
     public PostResponse refreshMetrics(Long id, String currentUserEmail, boolean isAdmin) {
         Post post = postRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Post not found with id: " + id));

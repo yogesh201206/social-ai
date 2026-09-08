@@ -1,5 +1,6 @@
 package com.socialflow.service;
 
+import com.socialflow.dto.ProfileUpdateRequest;
 import com.socialflow.dto.UserResponse;
 import com.socialflow.dto.UserUpdateRequest;
 
@@ -13,4 +14,6 @@ public interface UserService {
     UserResponse activateUser(Long id);
     UserResponse deactivateUser(Long id);
     UserResponse suspendUser(Long id);
+    UserResponse getCurrentUserProfile(String email);
+    UserResponse updateCurrentUserProfile(String email, ProfileUpdateRequest request);
 }

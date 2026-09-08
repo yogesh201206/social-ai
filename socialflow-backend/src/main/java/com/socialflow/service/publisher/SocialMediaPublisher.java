@@ -35,4 +35,15 @@ public interface SocialMediaPublisher {
      * @return MetricsResult containing real counts and metricsStatus (AVAILABLE, PERMISSION_REQUIRED, etc.)
      */
     MetricsResult fetchMetrics(Post post, SocialAccount account);
+
+    /**
+     * Fetches real engagement activities (comments, interactions) from the social media platform.
+     *
+     * @param post    the post with a non-null platformPostId
+     * @param account the connected social account with valid access token
+     * @return ActivityResult containing real activity items and status
+     */
+    default ActivityResult fetchActivities(Post post, SocialAccount account) {
+        return ActivityResult.notSupported("Activity fetching is not supported for this platform.");
+    }
 }

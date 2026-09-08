@@ -441,7 +441,7 @@ public class SocialAccountServiceImpl implements SocialAccountService {
         String redirectUri = instagramConfig.getRedirectUri();
         validateInstagramRedirectUri(redirectUri);
 
-        String scopes = "instagram_business_basic,instagram_business_content_publish";
+        String scopes = "instagram_business_basic,instagram_business_content_publish,instagram_business_manage_insights,instagram_business_manage_comments";
         String endpoint = "https://api.instagram.com/oauth/authorize";
 
         return endpoint +
@@ -463,7 +463,7 @@ public class SocialAccountServiceImpl implements SocialAccountService {
         }
         String scopes = platform == Platform.INSTAGRAM
                 ? "instagram_basic,instagram_content_publish,pages_read_engagement"
-                : "pages_show_list,pages_manage_posts,pages_read_engagement,read_insights,public_profile";
+                : "pages_show_list,pages_manage_posts,pages_read_engagement,pages_read_user_content,read_insights,public_profile";
 
         String redirectUri = metaConfig.getRedirectUri();
         validateMetaRedirectUri(redirectUri);

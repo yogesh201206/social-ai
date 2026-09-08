@@ -17,6 +17,7 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
 import java.util.*;
 
 /**
@@ -406,6 +407,83 @@ public class LinkedInPublisher implements SocialMediaPublisher {
             return MetricsResult.error("LinkedIn metrics fetch failed: HTTP " + status);
         } catch (Exception e) {
             return MetricsResult.error("LinkedIn metrics error: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public ActivityResult fetchActivities(Post post, SocialAccount account) {
+        String platformPostId = post.getPlatformPostId();
+        if (platformPostId == null || platformPostId.isBlank()) {
+            return ActivityResult.notFetched("Post has no platform ID");
+        }
+
+        String accessToken = account.getAccessToken();
+        if (accessToken == null || accessToken.isBlank()) {
+            return ActivityResult.permissionRequired("LinkedIn access token is missing or expired.");
+        }
+
+        // LinkedIn member tokens with w_member_social cannot read comments on posts without approved Community Management API
+        try {
+            String encodedUrn = URLEncoder.encode(platformPostId, StandardCharsets.UTF_8);
+            URI uri = URI.create("https://api.linkedin.com/rest/socialActions/" + encodedUrn + "/comments");
+
+            String responseBody = restClient.get()
+                    .uri(uri)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .header("LinkedIn-Version", "202401")
+                    .header("X-Restli-Protocol-Version", "2.0.0")
+                    .retrieve()
+                    .body(String.class);
+
+            Map<String, Object> response = null;
+            if (responseBody != null && !responseBody.isBlank()) {
+                response = objectMapper.readValue(responseBody, new TypeReference<Map<String, Object>>() {});
+            }
+
+            List<SocialActivityItem> items = new ArrayList<>();
+            if (response != null && response.get("elements") instanceof List<?> elements) {
+                for (Object elObj : elements) {
+                    if (elObj instanceof Map<?, ?> elMap) {
+                        String commentId = elMap.get("id") != null ? String.valueOf(elMap.get("id")) : null;
+                        String actorUrn = elMap.get("actor") != null ? String.valueOf(elMap.get("actor")) : null;
+                        String message = null;
+                        if (elMap.get("message") instanceof Map<?, ?> msgMap && msgMap.get("text") != null) {
+                            message = String.valueOf(msgMap.get("text"));
+                        }
+                        LocalDateTime createdAt = null;
+                        if (elMap.get("created") instanceof Map<?, ?> createdMap && createdMap.get("time") instanceof Number timeNum) {
+                            createdAt = java.time.Instant.ofEpochMilli(timeNum.longValue())
+                                    .atZone(java.time.ZoneId.systemDefault())
+                                    .toLocalDateTime();
+                        }
+                        if (commentId != null) {
+                            items.add(new SocialActivityItem(
+                                    commentId,
+                                    "COMMENT",
+                                    actorUrn,
+                                    null,
+                                    null,
+                                    message,
+                                    createdAt
+                            ));
+                        }
+                    }
+                }
+                return ActivityResult.available(items);
+            }
+
+            return ActivityResult.permissionRequired("LinkedIn engagement reading requires approved Community Management API access.");
+
+        } catch (HttpClientErrorException e) {
+            int status = e.getStatusCode().value();
+            log.warn("[LinkedIn] HTTP {} fetching activities for post {}: {}", status, platformPostId, e.getMessage());
+            if (status == 403 || status == 401) {
+                return ActivityResult.permissionRequired("LinkedIn engagement reading requires approved Community Management API access.");
+            }
+            return ActivityResult.apiError("LinkedIn activities fetch failed: HTTP " + status);
+        } catch (Exception e) {
+            log.warn("[LinkedIn] Error fetching activities for post {}: {}", platformPostId, e.getMessage());
+            return ActivityResult.permissionRequired("LinkedIn engagement reading requires approved Community Management API access.");
         }
     }
 

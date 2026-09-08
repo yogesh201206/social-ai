@@ -13,6 +13,10 @@ import org.springframework.web.client.RestClient;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -237,6 +241,106 @@ public class YouTubePublisher implements SocialMediaPublisher {
             return MetricsResult.error("YouTube statistics fetch failed: HTTP " + status);
         } catch (Exception e) {
             return MetricsResult.error("YouTube statistics error: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public ActivityResult fetchActivities(Post post, SocialAccount account) {
+        String platformPostId = post.getPlatformPostId();
+        if (platformPostId == null || platformPostId.isBlank()) {
+            return ActivityResult.notFetched("Post has no platform ID");
+        }
+
+        String accessToken = account.getAccessToken();
+        if (accessToken == null || accessToken.isBlank()) {
+            return ActivityResult.permissionRequired("YouTube access token is missing or expired.");
+        }
+
+        List<SocialActivityItem> items = new ArrayList<>();
+
+        try {
+            String endpoint = "https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId=" + platformPostId + "&maxResults=50";
+            log.info("[YouTube] Fetching comments for video {}", platformPostId);
+
+            String responseBody = restClient.get()
+                    .uri(endpoint)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .retrieve()
+                    .body(String.class);
+
+            Map<String, Object> response = null;
+            if (responseBody != null && !responseBody.isBlank()) {
+                response = objectMapper.readValue(responseBody, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+            }
+
+            if (response != null && response.get("items") instanceof List<?> itemList) {
+                for (Object itemObj : itemList) {
+                    if (itemObj instanceof Map<?, ?> threadMap && threadMap.get("snippet") instanceof Map<?, ?> threadSnippet) {
+                        if (threadSnippet.get("topLevelComment") instanceof Map<?, ?> commentObj && commentObj.get("snippet") instanceof Map<?, ?> commentSnippet) {
+                            String commentId = commentObj.get("id") != null ? String.valueOf(commentObj.get("id")) : (threadMap.get("id") != null ? String.valueOf(threadMap.get("id")) : null);
+                            String authorName = commentSnippet.get("authorDisplayName") != null ? String.valueOf(commentSnippet.get("authorDisplayName")) : null;
+                            String authorPic = commentSnippet.get("authorProfileImageUrl") != null ? String.valueOf(commentSnippet.get("authorProfileImageUrl")) : null;
+                            String text = commentSnippet.get("textDisplay") != null ? String.valueOf(commentSnippet.get("textDisplay")) : null;
+                            String publishedAtStr = commentSnippet.get("publishedAt") != null ? String.valueOf(commentSnippet.get("publishedAt")) : null;
+
+                            String authorChannelId = null;
+                            if (commentSnippet.get("authorChannelId") instanceof Map<?, ?> channelMap && channelMap.get("value") != null) {
+                                authorChannelId = String.valueOf(channelMap.get("value"));
+                            }
+
+                            LocalDateTime createdAt = parseIsoDateTime(publishedAtStr);
+
+                            if (commentId != null) {
+                                items.add(new SocialActivityItem(
+                                        commentId,
+                                        "COMMENT",
+                                        authorChannelId,
+                                        authorName,
+                                        authorPic,
+                                        text,
+                                        createdAt
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+
+            return ActivityResult.available(items);
+
+        } catch (HttpClientErrorException e) {
+            int status = e.getStatusCode().value();
+            String body = e.getResponseBodyAsString();
+            log.warn("[YouTube] HTTP {} fetching comments for video {}: {}", status, platformPostId, body);
+
+            if (body != null && (body.contains("commentsDisabled") || body.toLowerCase().contains("disabled comments"))) {
+                return ActivityResult.notSupported("Comments are disabled or unavailable for this video.");
+            }
+            if (status == 403 || status == 401) {
+                return ActivityResult.permissionRequired("YouTube API permission denied (HTTP " + status + ").");
+            }
+            return ActivityResult.apiError("YouTube comments fetch failed: HTTP " + status);
+        } catch (Exception e) {
+            log.warn("[YouTube] Error fetching comments for video {}: {}", platformPostId, e.getMessage());
+            return ActivityResult.apiError("YouTube comments error: " + e.getMessage());
+        }
+    }
+
+    private LocalDateTime parseIsoDateTime(String dateStr) {
+        if (dateStr == null || dateStr.isBlank()) return null;
+        try {
+            return OffsetDateTime.parse(dateStr, DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                    .toLocalDateTime();
+        } catch (Exception e1) {
+            try {
+                return java.time.Instant.parse(dateStr).atZone(java.time.ZoneId.systemDefault()).toLocalDateTime();
+            } catch (Exception e2) {
+                try {
+                    return LocalDateTime.parse(dateStr);
+                } catch (Exception ignored) {
+                    return null;
+                }
+            }
         }
     }
 

@@ -18,6 +18,7 @@ public interface PostService {
     PostResponse schedulePost(Long id, String scheduledAt, String timezone, String currentUserEmail, boolean isAdmin);
     PostResponse cancelPost(Long id, String currentUserEmail, boolean isAdmin);
     PostResponse publishPost(Long id, String currentUserEmail, boolean isAdmin);
+    List<com.socialflow.dto.PlatformPublishResultDto> createMultiPlatformPosts(com.socialflow.dto.MultiPostRequest request, String currentUserEmail, boolean isAdmin);
     PostResponse refreshMetrics(Long id, String currentUserEmail, boolean isAdmin);
     PostMetricsDto getMetricsDto(Long id, String currentUserEmail, boolean isAdmin);
 }
